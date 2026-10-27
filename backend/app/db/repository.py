@@ -7,6 +7,13 @@ from app.db.errors import NotFoundError
 from app.db.models import Conversation, Message, Role
 
 
+def get_message(db: Session, message_id: str) -> Message:
+    msg = db.get(Message, message_id)
+    if msg is None:
+        raise NotFoundError("message", message_id)
+    return msg
+
+
 def get_path(db: Session, message_id: str) -> list[Message]:
     """Return the messages from the root down to `message_id`, oldest first.
 

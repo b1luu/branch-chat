@@ -2,23 +2,28 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_llm
 from app.api.schemas import (
     PREVIEW_CHARS,
     ConversationCreate,
     ConversationOut,
     MessageOut,
+    ReplyCreate,
     TreeNode,
     TreeOut,
 )
 from app.db import repository
 from app.db.models import Message
+from app.llm import LLMProvider
+from app.services import chat
 
 router = APIRouter(prefix="/api")
 DB = Annotated[Session, Depends(get_db)]
+LLM = Annotated[LLMProvider, Depends(get_llm)]
 
 
 def _preview(content: str) -> str:
@@ -65,3 +70,23 @@ def get_tree(conversation_id: str, db: DB) -> TreeOut:
 @router.get("/messages/{message_id}/path")
 def get_message_path(message_id: str, db: DB) -> list[MessageOut]:
     return [MessageOut.model_validate(m) for m in repository.get_path(db, message_id)]
+
+
+@router.post("/messages/{message_id}/reply")
+def reply(
+    message_id: str, body: ReplyCreate, request: Request, db: DB, llm: LLM
+) -> StreamingResponse:
+    """Add a user turn under `message_id` and stream the assistant's answer as SSE.
+
+    Replying to a message that already has children creates a new branch.
+    The user node is committed (and a missing parent 404s) before streaming
+    starts, so errors that need a status code happen before the 200.
+    """
+    user_msg = chat.create_user_node(db, message_id, body.content, body.quote)
+    return StreamingResponse(
+        chat.stream_reply(
+            request.app.state.session_factory, llm, user_msg, chat.max_tokens_from_env()
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db import models  # noqa: F401  (register tables on Base.metadata)
 from app.db.base import Base
 from app.db.session import make_engine, make_session_factory
+from app.llm import MockProvider
 from app.main import create_app
 
 
@@ -52,6 +53,6 @@ def any_db(request: pytest.FixtureRequest, db: Session) -> Iterator[Session]:
 
 @pytest.fixture
 def client(engine: Engine) -> Iterator[TestClient]:
-    """API client bound to the per-test in-memory DB (same DB as the `db` fixture)."""
-    with TestClient(create_app(make_session_factory(engine))) as c:
+    """API client bound to the per-test in-memory DB (same DB as `db`) and MockProvider."""
+    with TestClient(create_app(make_session_factory(engine), MockProvider())) as c:
         yield c

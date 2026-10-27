@@ -13,6 +13,12 @@ class ConversationCreate(BaseModel):
     system_prompt: str = Field(default=DEFAULT_SYSTEM_PROMPT, min_length=1, max_length=10_000)
 
 
+class ReplyCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=50_000)
+    # Text highlighted in the parent assistant message ("Ask about this").
+    quote: str | None = Field(default=None, max_length=20_000)
+
+
 class ConversationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
