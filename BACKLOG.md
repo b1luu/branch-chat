@@ -4,7 +4,7 @@ Work top to bottom. One item (or a few tiny ones) per sprint. Check an item off 
 Each item lists its acceptance criteria. Don't reorder unless an item is blocked; if blocked, note why in PROGRESS.md and move on.
 
 ## Phase 1 — Backend foundation
-- [ ] **B1 Scaffold backend**: `backend/` with FastAPI app, `pyproject.toml` (ruff, pytest, pytest-asyncio, httpx), `/healthz`. Test: healthz returns 200.
+- [x] **B1 Scaffold backend**: `backend/` with FastAPI app, `pyproject.toml` (ruff, pytest, pytest-asyncio, httpx), `/healthz`. Test: healthz returns 200.
 - [ ] **B2 Data model**: SQLAlchemy models `Conversation`, `Message`, `Note`; Alembic initial migration; SQLite test fixture. Test: create rows, FK + parent relationships.
 - [ ] **B3 Path query**: repository function `get_path(message_id)` using a recursive CTE, works on SQLite and Postgres. Tests: linear chain, branch siblings don't leak, root-only, missing id → 404.
 - [ ] **B4 Conversation + tree endpoints**: create/list conversations, `GET /tree`, `GET /messages/{id}/path`. Tests for each.
