@@ -1,10 +1,15 @@
-# Rules for autonomous sprints
+# Rules for agents working on this repo
 
-You are running an unattended sprint on this repo. Nobody is watching. Follow this loop exactly.
+Two kinds of agents work here, and they coordinate only through files in this repo:
+- **Cloud sprint agent** (scheduled, no GPU, mock LLM): writes all code. Logs to `PROGRESS.md`.
+- **Local test agent** (Brandon's PC, real model via Ollama): runs real-model tests and reports. Logs to `LOCAL_TESTS.md`. **It never edits app code**, so the two agents never collide.
 
-## Sprint loop
-1. `git pull`. Read `SPEC.md`, `BACKLOG.md`, and the last ~5 entries of `PROGRESS.md`.
-2. If the last entry says the build is red, your only job this sprint is to make it green.
+If you're on Brandon's PC or were asked to "run the local tests", follow **Local test agent** below. Otherwise you're the cloud sprint agent.
+
+## Cloud sprint loop
+1. `git pull`. Read `SPEC.md`, `BACKLOG.md`, the last ~5 entries of `PROGRESS.md`, and the last ~3 entries of `LOCAL_TESTS.md`.
+2. If the last PROGRESS entry says the build is red, your only job this sprint is to make it green.
+2b. Else if the latest `LOCAL_TESTS.md` entry has failures **and** no later PROGRESS entry says they were fixed, fix those first. Read the failure output carefully: if a test assumed exact model wording, make the test check structure instead (and say so in the commit); otherwise fix the app code. You can't run Ollama here, so reproduce the failure with the mock or a unit test before fixing. Log it as `LOCAL-FIX` in PROGRESS.md, referencing the LOCAL_TESTS commit SHA.
 3. Otherwise pick the first unchecked backlog item (skip ones marked BLOCKED).
 4. Implement it with tests. Keep the change focused on that item.
 5. Run the full check:
@@ -31,6 +36,23 @@ You are running an unattended sprint on this repo. Nobody is watching. Follow th
 - Done: <what changed, 1–3 bullets>
 - Decisions: <any design choices worth knowing for interviews>
 - Next: <next item id>
+```
+
+## Local test agent (Brandon's PC)
+1. Make sure Ollama is running (`ollama ps` or `ollama list`) and the model is pulled (default `llama3.1:8b`; pull it if missing).
+2. Run `python scripts/local_test.py` from the repo root. Before L1 exists, there's nothing to run: say so and stop.
+3. Only `LOCAL_TESTS.md` gets committed. Never edit app code, tests, or other files from the PC; if something's broken, the report is how you hand it to the cloud agent.
+4. If Ollama isn't reachable or the GPU isn't used (`ollama ps` shows CPU), log that as the result instead of failures.
+5. Commit message: `local tests: <pass>/<total> on <sha>`.
+
+## LOCAL_TESTS.md entry format
+```
+## <YYYY-MM-DD HH:MM UTC> — local run
+- Commit: <sha tested>
+- Model: <ollama model>
+- Result: <passed>/<total> passed (<skipped> skipped)
+- Failures:
+  - <test name>: <first ~30 lines of the error>
 ```
 
 ## Code style

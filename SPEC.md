@@ -38,6 +38,10 @@ Branch Chat lets you branch a side question off any message, explore it with the
 - `POST /api/branches/{leaf_id}/merge` → summarizes branch from its fork point to `leaf_id`, stores note on the fork-origin message
 - `GET /healthz`
 
+## Testing tiers
+- **Fast tests** (cloud, every sprint): `LLM_PROVIDER=mock`, SQLite, no network. Must always pass on `main`.
+- **Real-model tests** (Brandon's PC): pytest marker `ollama`, auto-skipped when Ollama is unreachable. Run via `scripts/local_test.py`, results in `LOCAL_TESTS.md`. They check structure (streaming, persistence, context isolation, quotes, merge notes), never exact wording.
+
 ## Definition of done (MVP)
 - `docker compose up` runs Postgres + API + web; works with `LLM_PROVIDER=ollama` locally.
 - All backend and frontend tests pass in CI (GitHub Actions) with `LLM_PROVIDER=mock`.
