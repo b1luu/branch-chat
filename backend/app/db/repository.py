@@ -1,10 +1,10 @@
-"""Read queries over the message tree."""
+"""Queries over conversations and the message tree."""
 
 from sqlalchemy import literal, select
 from sqlalchemy.orm import Session, aliased
 
 from app.db.errors import NotFoundError
-from app.db.models import Message
+from app.db.models import Conversation, Message, Role
 
 
 def get_path(db: Session, message_id: str) -> list[Message]:
@@ -49,3 +49,49 @@ def get_path(db: Session, message_id: str) -> list[Message]:
     if not rows:
         raise NotFoundError("message", message_id)
     return list(rows)
+
+
+def create_conversation(
+    db: Session, title: str, system_prompt: str
+) -> tuple[Conversation, Message]:
+    """Create a conversation with its root system message.
+
+    Every conversation starts with one root node (the system prompt) so the
+    first user turn is just `POST /messages/{root_id}/reply`, like any other
+    turn. That keeps "reply" the only way messages are created.
+    Flushes but does not commit; the caller owns the transaction.
+    """
+    conv = Conversation(title=title)
+    db.add(conv)
+    db.flush()
+    root = Message(conversation_id=conv.id, parent_id=None, role=Role.system, content=system_prompt)
+    db.add(root)
+    db.flush()
+    return conv, root
+
+
+def list_conversations(db: Session) -> list[tuple[Conversation, str | None]]:
+    """All conversations, newest first, each with its root message id."""
+    root = aliased(Message)
+    stmt = (
+        select(Conversation, root.id)
+        .outerjoin(root, (root.conversation_id == Conversation.id) & root.parent_id.is_(None))
+        .order_by(Conversation.created_at.desc(), Conversation.id)
+    )
+    return [(conv, root_id) for conv, root_id in db.execute(stmt).all()]
+
+
+def get_tree(db: Session, conversation_id: str) -> list[Message]:
+    """Every message in a conversation, oldest first (parents before children).
+
+    The client rebuilds the tree from `parent_id`; one flat indexed query is
+    cheaper than nesting on the server.
+    """
+    if db.get(Conversation, conversation_id) is None:
+        raise NotFoundError("conversation", conversation_id)
+    stmt = (
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at, Message.id)
+    )
+    return list(db.scalars(stmt).all())

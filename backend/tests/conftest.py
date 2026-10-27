@@ -2,12 +2,14 @@ import os
 from collections.abc import Iterator
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.db import models  # noqa: F401  (register tables on Base.metadata)
 from app.db.base import Base
-from app.db.session import make_engine
+from app.db.session import make_engine, make_session_factory
+from app.main import create_app
 
 
 @pytest.fixture
@@ -46,3 +48,10 @@ def any_db(request: pytest.FixtureRequest, db: Session) -> Iterator[Session]:
         session.rollback()
     Base.metadata.drop_all(eng)
     eng.dispose()
+
+
+@pytest.fixture
+def client(engine: Engine) -> Iterator[TestClient]:
+    """API client bound to the per-test in-memory DB (same DB as the `db` fixture)."""
+    with TestClient(create_app(make_session_factory(engine))) as c:
+        yield c
