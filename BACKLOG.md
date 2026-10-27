@@ -5,7 +5,7 @@ Each item lists its acceptance criteria. Don't reorder unless an item is blocked
 
 ## Phase 1 — Backend foundation
 - [x] **B1 Scaffold backend**: `backend/` with FastAPI app, `pyproject.toml` (ruff, pytest, pytest-asyncio, httpx), `/healthz`. Test: healthz returns 200.
-- [ ] **B2 Data model**: SQLAlchemy models `Conversation`, `Message`, `Note`; Alembic initial migration; SQLite test fixture. Test: create rows, FK + parent relationships.
+- [x] **B2 Data model**: SQLAlchemy models `Conversation`, `Message`, `Note`; Alembic initial migration; SQLite test fixture. Test: create rows, FK + parent relationships.
 - [ ] **B3 Path query**: repository function `get_path(message_id)` using a recursive CTE, works on SQLite and Postgres. Tests: linear chain, branch siblings don't leak, root-only, missing id → 404.
 - [ ] **B4 Conversation + tree endpoints**: create/list conversations, `GET /tree`, `GET /messages/{id}/path`. Tests for each.
 - [ ] **B5 LLM provider interface**: `LLMProvider`, `MockProvider` (echoes a deterministic reply that mentions how many context messages it received), factory from `LLM_PROVIDER`. Tests.

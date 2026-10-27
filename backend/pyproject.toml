@@ -33,3 +33,7 @@ target-version = "py312"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff.lint.isort]
+# The local alembic/ migrations dir would otherwise make ruff treat `alembic` as first-party.
+known-third-party = ["alembic"]
