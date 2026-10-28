@@ -1,7 +1,9 @@
 import pytest
 
 from app.llm import ChatMessage, LLMProvider, MockProvider, ProviderConfigError, get_provider
+from app.llm.anthropic import AnthropicProvider
 from app.llm.mock import mock_reply
+from app.llm.ollama import OllamaProvider
 
 
 async def _collect(provider: LLMProvider, messages: list[ChatMessage], **kw: int) -> list[str]:
@@ -71,7 +73,19 @@ def test_factory_unknown_provider_raises(monkeypatch: pytest.MonkeyPatch) -> Non
         get_provider()
 
 
-@pytest.mark.parametrize("name", ["ollama", "anthropic"])
-def test_factory_real_providers_not_yet_available(name: str) -> None:
-    with pytest.raises(ProviderConfigError, match="not implemented yet"):
-        get_provider(name)
+# B7 replaced `test_factory_real_providers_not_yet_available`: the real providers
+# now exist, so the factory must build them (behavior change, not a weaker test).
+def test_factory_builds_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    assert isinstance(get_provider(), OllamaProvider)
+
+
+def test_factory_builds_anthropic_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    assert isinstance(get_provider("anthropic"), AnthropicProvider)
+
+
+def test_factory_anthropic_without_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(ProviderConfigError, match="ANTHROPIC_API_KEY"):
+        get_provider("anthropic")

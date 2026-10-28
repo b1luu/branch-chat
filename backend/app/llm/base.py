@@ -14,6 +14,10 @@ ChatRole = Literal["system", "user", "assistant"]
 DEFAULT_MAX_TOKENS = 1024
 
 
+class ProviderConfigError(ValueError):
+    """LLM_PROVIDER names an unknown provider, or the provider is misconfigured."""
+
+
 @dataclass(frozen=True)
 class ChatMessage:
     """One turn of prompt context, already flattened from the DB path."""

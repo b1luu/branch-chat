@@ -2,28 +2,32 @@
 
 import os
 
-from app.llm.base import LLMProvider
+from app.llm.base import LLMProvider, ProviderConfigError
 from app.llm.mock import MockProvider
 
 KNOWN_PROVIDERS = ("mock", "ollama", "anthropic")
 
-
-class ProviderConfigError(ValueError):
-    """LLM_PROVIDER names an unknown or not-yet-available provider."""
+__all__ = ["KNOWN_PROVIDERS", "ProviderConfigError", "get_provider"]
 
 
 def get_provider(name: str | None = None) -> LLMProvider:
     """Build a provider by name, falling back to `LLM_PROVIDER`, then "mock".
 
     Mock is the default so a fresh checkout and every test run never touch a
-    real model or network.
+    real model or network. Real providers are imported lazily so the mock path
+    never loads HTTP client code.
     """
     chosen = (name or os.getenv("LLM_PROVIDER") or "mock").strip().lower()
     if chosen == "mock":
         return MockProvider()
-    if chosen in KNOWN_PROVIDERS:
-        # Real providers land in B7; fail loudly rather than silently mocking.
-        raise ProviderConfigError(f"LLM provider {chosen!r} is not implemented yet")
+    if chosen == "ollama":
+        from app.llm.ollama import OllamaProvider
+
+        return OllamaProvider()
+    if chosen == "anthropic":
+        from app.llm.anthropic import AnthropicProvider
+
+        return AnthropicProvider()
     raise ProviderConfigError(
         f"Unknown LLM_PROVIDER {chosen!r}; expected one of {', '.join(KNOWN_PROVIDERS)}"
     )
