@@ -72,3 +72,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Decisions: results parsed from JUnit XML (stable, stdlib `xml.etree`) instead of scraping pytest's console. If Ollama is unreachable the entry says `not run — Ollama not reachable at <url>` rather than "0/5 passed", so the cloud agent doesn't treat it as failures. Exit code 1 when any test fails. Dry-ran with `--no-push` against a fake server (4/5 passed, 1 skipped = merge until D1) and with nothing listening (not-run entry); reverted the report both times.
 - Ready for Brandon: on the PC, `ollama pull llama3.1:8b`, `cd backend && pip install -e ".[dev]"`, then `python scripts/local_test.py`.
 - Next: F1
+
+## 2026-10-28 17:50 UTC — F1
+- Status: green
+- Done: `frontend/` with Vite 7 + React 19 + TS 5.9 (strict, `noUncheckedIndexedAccess`), Vitest 4 + Testing Library + jsdom, ESLint 9 flat config (typescript-eslint strict, react-hooks, `no-explicit-any` = error). Typed API client `src/api/client.ts` (`listConversations`, `createConversation`, `getTree`, `getPath`, `ApiError` carrying FastAPI's `detail`) with types mirroring `schemas.py`. Dev proxy `/api` + `/healthz` → `BACKEND_URL` (default `http://localhost:8000`). `App` lists conversations with loading/empty/error states. 10 tests (app render states, client URLs/methods/body/encoding/error parsing).
+- Decisions: same-origin proxy instead of CORS (SSE passes straight through; prod web container can do the same). Pinned one major behind the newest releases (Vite 7, Vitest 4, ESLint 9, TS 5.9) because typescript-eslint doesn't support TS 7 yet and the newest majors are only weeks old. Shared test helpers in `src/test/fetch.ts` (`mockFetch`, `jsonResponse`, `fetchCall`) for F2+.
+- Env note for cloud runs: npm 10.9 (the sandbox's) crashes resolving vitest's optional peer set (`Cannot read properties of null (reading 'edgesOut')`), so the lockfile was generated with `npx -y npm@11 install`. `npm ci` on npm 10 works fine with that lockfile; only regenerate it with npm 11.
+- Tidy: untracked the committed `scripts/__pycache__/*.pyc` and added `__pycache__/`, `*.pyc`, `node_modules/`, `frontend/dist/` to `.gitignore`.
+- Deps (frontend, new): react, react-dom; dev: vite, @vitejs/plugin-react, typescript, vitest, jsdom, @testing-library/react, @testing-library/jest-dom, eslint, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh, globals, @types/*.
+- Next: F2

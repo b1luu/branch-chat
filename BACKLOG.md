@@ -15,7 +15,7 @@ Each item lists its acceptance criteria. Don't reorder unless an item is blocked
 - [x] **L1 Local test runner**: `scripts/local_test.py` (stdlib only, must work on Windows). It runs `git pull`, then `pytest -m ollama -q` in `backend/` with `LLM_PROVIDER=ollama`, then appends an entry to `LOCAL_TESTS.md` (format in CLAUDE.md) with the commit SHA, model, pass/fail counts, and the first ~30 lines of each failure. Then it commits only `LOCAL_TESTS.md`, rebases on origin/main, and pushes. Flag `--no-push` for dry runs. Unit-test the report formatting with a fake pytest result.
 
 ## Phase 2 — Frontend MVP
-- [ ] **F1 Scaffold frontend**: `frontend/` Vite + React + TS, Vitest, ESLint; API client module; dev proxy to backend. Test: app renders.
+- [x] **F1 Scaffold frontend**: `frontend/` Vite + React + TS, Vitest, ESLint; API client module; dev proxy to backend. Test: app renders.
 - [ ] **F2 Chat view**: render active path, input box, streaming assistant reply via SSE. Tests with mocked fetch.
 - [ ] **F3 Tree sidebar**: collapsible tree from `/tree`; click node → becomes active leaf; active path highlighted. Tests.
 - [ ] **F4 Ask about this**: select text in an assistant message → button → creates quote branch from that message. Tests.
