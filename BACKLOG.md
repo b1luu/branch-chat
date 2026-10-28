@@ -19,7 +19,7 @@ Each item lists its acceptance criteria. Don't reorder unless an item is blocked
 - [x] **F2 Chat view**: render active path, input box, streaming assistant reply via SSE. Tests with mocked fetch.
 - [x] **F3 Tree sidebar**: collapsible tree from `/tree`; click node → becomes active leaf; active path highlighted. Tests.
 - [x] **F4 Ask about this**: select text in an assistant message → button → creates quote branch from that message. Tests.
-- [ ] **F5 Branch navigation**: breadcrumb + "Back to main thread" (returns to the deepest leaf of the branch you came from). Tests.
+- [x] **F5 Branch navigation**: breadcrumb + "Back to main thread" (returns to the deepest leaf of the branch you came from). Tests.
 
 ## Phase 3 — The differentiators
 - [ ] **D1 Merge back**: backend summarize endpoint (uses provider) + note rendering in main thread + notes included in descendants' context. Tests both sides.

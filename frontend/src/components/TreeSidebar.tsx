@@ -7,6 +7,8 @@ interface TreeSidebarProps {
   conversationId: string;
   activeLeaf: string | null;
   onSelect: (id: string) => void;
+  /** Called with the nodes each time the tree is (re)fetched, so siblings like the breadcrumb can share it. */
+  onTreeChange?: (nodes: TreeNode[]) => void;
 }
 
 const ROLE_LABEL: Record<TreeNode["role"], string> = { user: "You", assistant: "AI", system: "System" };
@@ -18,7 +20,7 @@ const ROLE_LABEL: Record<TreeNode["role"], string> = { user: "You", assistant: "
  * leaf is a node it hasn't seen (i.e. a reply just created it). Nodes on the
  * active path are marked so the user can see which branch they're on.
  */
-export default function TreeSidebar({ conversationId, activeLeaf, onSelect }: TreeSidebarProps) {
+export default function TreeSidebar({ conversationId, activeLeaf, onSelect, onTreeChange }: TreeSidebarProps) {
   const [tree, setTree] = useState<{ conversationId: string; nodes: TreeNode[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -34,6 +36,7 @@ export default function TreeSidebar({ conversationId, activeLeaf, onSelect }: Tr
         if (cancelled) return;
         setError(null);
         setTree({ conversationId, nodes: t.nodes });
+        onTreeChange?.(t.nodes);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -41,6 +44,8 @@ export default function TreeSidebar({ conversationId, activeLeaf, onSelect }: Tr
     return () => {
       cancelled = true;
     };
+    // onTreeChange is a notification sink; a new callback identity shouldn't refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, activeLeaf, needsFetch]);
 
   const nodes = current?.nodes;

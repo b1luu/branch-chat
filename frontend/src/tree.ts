@@ -87,3 +87,58 @@ export function flattenTree(
   }
   return rows;
 }
+
+/** One run of the active path that stays on a single branch (see `branchSegments`). */
+export interface BranchSegment {
+  /** First node of the segment: the root for the main thread, else the side branch's first node. */
+  start: TreeNode;
+  /** The last node of this segment on the active path. */
+  end: TreeNode;
+}
+
+/**
+ * Split the root→`leafId` path into branches, main thread first.
+ *
+ * A "branch" (SPEC) is any child of a message that already had a child, so
+ * the *oldest* child continues the current branch and every later sibling
+ * starts a side branch. Walking the path, a new segment begins at each node
+ * that isn't its parent's oldest child. One segment = you're on the main thread.
+ * Returns [] if the leaf isn't in `nodes` (e.g. the tree is still refetching).
+ */
+export function branchSegments(nodes: readonly TreeNode[], leafId: string | null): BranchSegment[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const path: TreeNode[] = [];
+  const seen = new Set<string>();
+  let cur = leafId === null ? undefined : byId.get(leafId);
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    path.push(cur);
+    cur = cur.parent_id === null ? undefined : byId.get(cur.parent_id);
+  }
+  path.reverse();
+
+  const kids = childrenIndex(nodes);
+  const segments: BranchSegment[] = [];
+  for (const node of path) {
+    const last = segments.at(-1);
+    const oldestSibling = kids.get(node.parent_id)?.[0];
+    if (last && oldestSibling?.id === node.id) last.end = node;
+    else segments.push({ start: node, end: node });
+  }
+  return segments;
+}
+
+/**
+ * The deepest node reached from `fromId` by always taking the oldest child,
+ * i.e. the current tip of the branch `fromId` is on. Iterative for deep chats.
+ */
+export function branchTip(nodes: readonly TreeNode[], fromId: string): string {
+  const kids = childrenIndex(nodes);
+  let id = fromId;
+  const seen = new Set<string>();
+  for (let next = kids.get(id)?.[0]; next && !seen.has(next.id); next = kids.get(id)?.[0]) {
+    seen.add(next.id);
+    id = next.id;
+  }
+  return id;
+}

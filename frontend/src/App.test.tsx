@@ -119,4 +119,37 @@ describe("App", () => {
     expect(screen.getByRole("list", { name: "Conversations" })).toHaveTextContent("New conversation");
     expect(await screen.findByText("No messages yet.")).toBeInTheDocument();
   });
+
+  it("shows a breadcrumb on a side branch and Back to main thread returns to the main tip", async () => {
+    const root = msg({ id: "r1", role: "system", content: "sys" });
+    const u = msg({ id: "u1", parent_id: "r1", content: "hello" });
+    const a = msg({ id: "a1", parent_id: "u1", role: "assistant", content: "main answer" });
+    const u2 = msg({ id: "u2", parent_id: "a1", content: "main follow-up" });
+    const a2 = msg({ id: "a2", parent_id: "u2", role: "assistant", content: "main reply" });
+    // Created after the main follow-up, so this is the side branch (and the newest node).
+    const q = msg({ id: "q1", parent_id: "a1", content: "side question", quote: "answer" });
+    const b = msg({ id: "b1", parent_id: "q1", role: "assistant", content: "side answer" });
+    routeFetch({
+      "GET /api/conversations": () =>
+        jsonResponse([{ id: "c1", title: "First", created_at: root.created_at, root_message_id: "r1" }]),
+      "GET /api/conversations/c1/tree": () =>
+        jsonResponse({ conversation_id: "c1", nodes: [root, u, a, u2, a2, q, b].map(treeNode) }),
+      "GET /api/messages/a2/path": () => jsonResponse([root, u, a, u2, a2]),
+      "GET /api/messages/b1/path": () => jsonResponse([root, u, a, q, b]),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    await ui.click(await screen.findByRole("button", { name: "First" }));
+    const chatPane = () => screen.getByRole("region", { name: "Chat" });
+    await waitFor(() => expect(within(chatPane()).getByText("side answer")).toBeInTheDocument());
+
+    const crumbs = await screen.findByRole("navigation", { name: "Breadcrumb" });
+    expect(crumbs).toHaveTextContent("Main thread");
+    expect(crumbs).toHaveTextContent("side question");
+
+    await ui.click(screen.getByRole("button", { name: "Back to main thread" }));
+    await waitFor(() => expect(within(chatPane()).getByText("main reply")).toBeInTheDocument());
+    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
+    expect(screen.getByRole("treeitem", { selected: true })).toHaveTextContent("AI: main reply");
+  });
 });

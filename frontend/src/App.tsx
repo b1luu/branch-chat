@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createConversation, getTree, listConversations } from "./api/client.ts";
-import type { Conversation } from "./api/types.ts";
+import type { Conversation, TreeNode } from "./api/types.ts";
+import BranchNav from "./components/BranchNav.tsx";
 import ChatView from "./components/ChatView.tsx";
 import TreeSidebar from "./components/TreeSidebar.tsx";
 
@@ -27,6 +28,8 @@ export default function App() {
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [activeLeaf, setActiveLeaf] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Latest `/tree` the sidebar fetched, tagged with its conversation so a stale one is never used.
+  const [tree, setTree] = useState<{ conversationId: string; nodes: TreeNode[] } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,11 +100,19 @@ export default function App() {
         {actionError && <p role="alert">{actionError}</p>}
         {activeConversation && (
           <nav aria-label="Branches">
-            <TreeSidebar conversationId={activeConversation} activeLeaf={activeLeaf} onSelect={setActiveLeaf} />
+            <TreeSidebar
+              conversationId={activeConversation}
+              activeLeaf={activeLeaf}
+              onSelect={setActiveLeaf}
+              onTreeChange={(nodes) => setTree({ conversationId: activeConversation, nodes })}
+            />
           </nav>
         )}
       </aside>
       <main>
+        {activeLeaf && tree && tree.conversationId === activeConversation && (
+          <BranchNav nodes={tree.nodes} activeLeaf={activeLeaf} onSelect={setActiveLeaf} />
+        )}
         {activeLeaf ? (
           <ChatView leafId={activeLeaf} onLeafChange={setActiveLeaf} />
         ) : (

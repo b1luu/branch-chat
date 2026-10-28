@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "./api/types.ts";
-import { childrenIndex, flattenTree, pathIds } from "./tree.ts";
+import { branchSegments, branchTip, childrenIndex, flattenTree, pathIds } from "./tree.ts";
 
 let t = 0;
 function node(id: string, parent_id: string | null, role: TreeNode["role"] = "user"): TreeNode {
@@ -66,5 +66,50 @@ describe("tree helpers", () => {
     const rows = flattenTree(deep, new Set());
     expect(rows).toHaveLength(20_000);
     expect(rows.every((r) => r.depth === 0)).toBe(true);
+  });
+});
+
+describe("branchSegments", () => {
+  const ids = (leaf: string) => branchSegments(nodes, leaf).map((s) => [s.start.id, s.end.id]);
+
+  it("is a single main segment on the main line", () => {
+    expect(ids("a2")).toEqual([["root", "a2"]]);
+    expect(ids("u1")).toEqual([["root", "u1"]]);
+  });
+
+  it("starts a new segment at each later sibling", () => {
+    expect(ids("b1")).toEqual([["root", "a1"], ["q1", "b1"]]);
+    // q2 is b1's oldest child, so it continues the side branch; q3 forks again.
+    expect(ids("q2")).toEqual([["root", "a1"], ["q1", "q2"]]);
+    expect(ids("q3")).toEqual([["root", "a1"], ["q1", "b1"], ["q3", "q3"]]);
+  });
+
+  it("is empty for an unknown or missing leaf", () => {
+    expect(branchSegments(nodes, "nope")).toEqual([]);
+    expect(branchSegments(nodes, null)).toEqual([]);
+  });
+
+  it("treats a later sibling of the very first turn as a side branch", () => {
+    const forked = [...nodes, node("u9", "root")];
+    expect(branchSegments(forked, "u9").map((s) => s.start.id)).toEqual(["root", "u9"]);
+  });
+});
+
+describe("branchTip", () => {
+  it("follows the oldest child to the end of the branch", () => {
+    expect(branchTip(nodes, "a1")).toBe("a2");
+    expect(branchTip(nodes, "root")).toBe("a2");
+    expect(branchTip(nodes, "b1")).toBe("q2");
+  });
+
+  it("returns the node itself when it is a leaf or unknown", () => {
+    expect(branchTip(nodes, "a2")).toBe("a2");
+    expect(branchTip(nodes, "nope")).toBe("nope");
+  });
+
+  it("handles very deep chains without recursion", () => {
+    const chain: TreeNode[] = [node("n0", null)];
+    for (let i = 1; i < 20_000; i++) chain.push(node(`n${i}`, `n${i - 1}`));
+    expect(branchTip(chain, "n0")).toBe("n19999");
   });
 });
