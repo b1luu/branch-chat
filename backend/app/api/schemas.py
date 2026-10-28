@@ -40,6 +40,24 @@ class MessageOut(BaseModel):
     created_at: datetime
 
 
+class NoteOut(BaseModel):
+    """A merge-back summary, attached to the message its side branch forked from."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    message_id: str
+    source_leaf_id: str | None
+    content: str
+    created_at: datetime
+
+
+class PathMessageOut(MessageOut):
+    """A message on a root→node path, with any merge-back notes attached to it."""
+
+    notes: list[NoteOut] = []
+
+
 class TreeNode(BaseModel):
     """A lightweight node for the sidebar: no full content, just a preview."""
 

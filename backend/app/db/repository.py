@@ -1,10 +1,12 @@
 """Queries over conversations and the message tree."""
 
+from collections.abc import Sequence
+
 from sqlalchemy import literal, select
 from sqlalchemy.orm import Session, aliased
 
-from app.db.errors import NotFoundError
-from app.db.models import Conversation, Message, Role
+from app.db.errors import ConflictError, NotFoundError
+from app.db.models import Conversation, Message, Note, Role
 
 
 def get_message(db: Session, message_id: str) -> Message:
@@ -102,3 +104,44 @@ def get_tree(db: Session, conversation_id: str) -> list[Message]:
         .order_by(Message.created_at, Message.id)
     )
     return list(db.scalars(stmt).all())
+
+
+def side_branch_start(db: Session, path: Sequence[Message]) -> int:
+    """Index in `path` (root→leaf) of the first node of the innermost side branch.
+
+    SPEC: a branch is any child of a message that already had a child. So the
+    *oldest* child of a message continues its branch and each later sibling
+    starts a side branch (the frontend's breadcrumb uses the same rule). The
+    innermost side branch starts at the deepest path node that isn't its
+    parent's oldest child; its parent is the fork origin the merge note goes on.
+    Raises ConflictError if the whole path is on the main thread.
+    """
+    parent_ids = [m.parent_id for m in path if m.parent_id is not None]
+    rows = db.execute(
+        select(Message.parent_id, Message.id)
+        .where(Message.parent_id.in_(parent_ids))
+        .order_by(Message.parent_id, Message.created_at, Message.id)
+    ).all()
+    oldest: dict[str, str] = {}
+    for parent_id, child_id in rows:
+        oldest.setdefault(parent_id, child_id)
+    for i in range(len(path) - 1, 0, -1):
+        node = path[i]
+        if node.parent_id is not None and oldest.get(node.parent_id) != node.id:
+            return i
+    raise ConflictError(f"message {path[-1].id} is on the main thread; nothing to merge")
+
+
+def notes_for(db: Session, message_ids: Sequence[str]) -> dict[str, list[Note]]:
+    """Merge-back notes attached to any of `message_ids`, oldest first per message."""
+    if not message_ids:
+        return {}
+    notes = db.scalars(
+        select(Note)
+        .where(Note.message_id.in_(list(message_ids)))
+        .order_by(Note.created_at, Note.id)
+    ).all()
+    by_message: dict[str, list[Note]] = {}
+    for n in notes:
+        by_message.setdefault(n.message_id, []).append(n)
+    return by_message

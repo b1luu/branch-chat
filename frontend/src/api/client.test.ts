@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchCall, jsonResponse, mockFetch } from "../test/fetch.ts";
-import { ApiError, createConversation, getPath, getTree, listConversations } from "./client.ts";
+import { ApiError, createConversation, getPath, getTree, listConversations, mergeBranch } from "./client.ts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -49,5 +49,20 @@ describe("api client", () => {
   it("falls back to the status line for non-JSON errors", async () => {
     mockFetch(new Response("oops", { status: 502, statusText: "Bad Gateway" }));
     await expect(listConversations()).rejects.toThrow("502 Bad Gateway");
+  });
+
+  it("merges a branch with a bodiless POST and returns the note", async () => {
+    const note = { id: "n1", message_id: "a1", source_leaf_id: "b/2", content: "Sum.", created_at: "2026-10-28T00:00:00Z" };
+    const fetchMock = mockFetch(jsonResponse(note, 201));
+    await expect(mergeBranch("b/2")).resolves.toEqual(note);
+    const [url, init] = fetchCall(fetchMock);
+    expect(url).toBe("/api/branches/b%2F2/merge");
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBeUndefined();
+  });
+
+  it("surfaces a merge conflict as ApiError", async () => {
+    mockFetch(jsonResponse({ detail: "message a2 is on the main thread; nothing to merge" }, 409));
+    await expect(mergeBranch("a2")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("main thread") });
   });
 });

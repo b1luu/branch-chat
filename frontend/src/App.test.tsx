@@ -152,4 +152,34 @@ describe("App", () => {
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
     expect(screen.getByRole("treeitem", { selected: true })).toHaveTextContent("AI: main reply");
   });
+
+  it("merging a side branch returns to the main thread and shows the note", async () => {
+    const root = msg({ id: "r1", role: "system", content: "sys" });
+    const u = msg({ id: "u1", parent_id: "r1", content: "hello" });
+    const a = msg({ id: "a1", parent_id: "u1", role: "assistant", content: "main answer" });
+    const u2 = msg({ id: "u2", parent_id: "a1", content: "main follow-up" });
+    const a2 = msg({ id: "a2", parent_id: "u2", role: "assistant", content: "main reply" });
+    const q = msg({ id: "q1", parent_id: "a1", content: "side question" });
+    const b = msg({ id: "b1", parent_id: "q1", role: "assistant", content: "side answer" });
+    const note = { id: "n1", message_id: "a1", source_leaf_id: "b1", content: "Side said: yes.", created_at: b.created_at };
+    const fetchMock = routeFetch({
+      "GET /api/conversations": () =>
+        jsonResponse([{ id: "c1", title: "First", created_at: root.created_at, root_message_id: "r1" }]),
+      "GET /api/conversations/c1/tree": () =>
+        jsonResponse({ conversation_id: "c1", nodes: [root, u, a, u2, a2, q, b].map(treeNode) }),
+      "GET /api/messages/b1/path": () => jsonResponse([root, u, a, q, b]),
+      "POST /api/branches/b1/merge": () => jsonResponse(note, 201),
+      "GET /api/messages/a2/path": () => jsonResponse([root, u, { ...a, notes: [note] }, u2, a2]),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    await ui.click(await screen.findByRole("button", { name: "First" }));
+    const chatPane = () => screen.getByRole("region", { name: "Chat" });
+    await waitFor(() => expect(within(chatPane()).getByText("side answer")).toBeInTheDocument());
+
+    await ui.click(await screen.findByRole("button", { name: "Merge back" }));
+    await waitFor(() => expect(within(chatPane()).getByText("main reply")).toBeInTheDocument());
+    expect(within(chatPane()).getByRole("complementary", { name: "Merged note" })).toHaveTextContent("Side said: yes.");
+    expect(fetchMock).toHaveBeenCalledWith("/api/branches/b1/merge", expect.objectContaining({ method: "POST" }));
+  });
 });

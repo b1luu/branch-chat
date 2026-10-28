@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchCall, jsonResponse, mockFetch } from "../test/fetch.ts";
 import type { TreeNode } from "../api/types.ts";
 import BranchNav from "./BranchNav.tsx";
 
@@ -28,6 +29,10 @@ const nodes = [
   node("u6", "a2", "user"),
   node("a6", "u6", "assistant"),
 ];
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function crumbs() {
   return within(screen.getByRole("navigation", { name: "Breadcrumb" }))
@@ -79,5 +84,45 @@ describe("BranchNav", () => {
   it("works when the active leaf is the fork's own first node", () => {
     render(<BranchNav nodes={nodes} activeLeaf="q1" onSelect={vi.fn()} />);
     expect(crumbs()).toEqual(["Main thread", "Why is it called a common table…"]);
+  });
+
+  it("Merge back summarizes the branch, then returns to the parent branch's tip", async () => {
+    let resolve: (r: Response) => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((r) => (resolve = r)));
+    vi.stubGlobal("fetch", fetchMock);
+    const onSelect = vi.fn();
+    const ui = userEvent.setup();
+    render(<BranchNav nodes={nodes} activeLeaf="b2" onSelect={onSelect} />);
+
+    await ui.click(screen.getByRole("button", { name: "Merge back" }));
+    expect(screen.getByRole("button", { name: "Merging…" })).toBeDisabled();
+    expect(fetchCall(fetchMock)[0]).toBe("/api/branches/b2/merge");
+    expect(onSelect).not.toHaveBeenCalled();
+
+    resolve(jsonResponse({ id: "n1", message_id: "a1", source_leaf_id: "b2", content: "S", created_at: "x" }, 201));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith("a6"));
+  });
+
+  it("merging a nested branch returns to its parent branch", async () => {
+    mockFetch(jsonResponse({ id: "n1", message_id: "b1", source_leaf_id: "c1", content: "S", created_at: "x" }, 201));
+    const onSelect = vi.fn();
+    render(<BranchNav nodes={nodes} activeLeaf="c1" onSelect={onSelect} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Merge back" }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith("b2"));
+  });
+
+  it("shows a merge error and stays on the branch", async () => {
+    mockFetch(jsonResponse({ detail: "LLM provider error: timeout" }, 502));
+    const onSelect = vi.fn();
+    render(<BranchNav nodes={nodes} activeLeaf="b2" onSelect={onSelect} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Merge back" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Merge failed: LLM provider error: timeout");
+    expect(screen.getByRole("button", { name: "Merge back" })).toBeEnabled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("offers no merge on the main thread", () => {
+    render(<BranchNav nodes={nodes} activeLeaf="a6" onSelect={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Merge back" })).not.toBeInTheDocument();
   });
 });

@@ -106,10 +106,6 @@ def test_quote_text_appears_in_prompt(
 
 
 def test_merge_back_produces_nonempty_note(live_client: TestClient, db: Session) -> None:
-    routes = {getattr(r, "path", "") for r in live_client.app.routes}
-    if MERGE_ROUTE not in routes:
-        pytest.skip("merge-back endpoint not implemented yet (D1)")
-
     root = new_root(live_client)
     _, _, a1 = reply(live_client, root, "What is a binary tree?")
     reply(live_client, a1["id"], "Main thread follow-up: what is a heap?")

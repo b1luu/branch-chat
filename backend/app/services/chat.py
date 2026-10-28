@@ -3,13 +3,13 @@
 import json
 import logging
 import os
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import MessageOut
 from app.db import repository
-from app.db.models import Message, Role
+from app.db.models import Message, Note, Role
 from app.llm import DEFAULT_MAX_TOKENS, ChatMessage, LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -31,12 +31,28 @@ def format_user_content(content: str, quote: str | None) -> str:
     )
 
 
-def build_prompt(path: Sequence[Message]) -> list[ChatMessage]:
+NOTE_PREFIX = "Note merged back from a side discussion at this point:"
+
+
+def format_note(note: Note) -> ChatMessage:
+    return ChatMessage("system", f"{NOTE_PREFIX}\n{note.content}")
+
+
+def build_prompt(
+    path: Sequence[Message], notes: Mapping[str, Sequence[Note]] | None = None
+) -> list[ChatMessage]:
     """Map a root→node path to provider messages, oldest first.
 
     The path comes from the recursive CTE, so it holds only this node's
-    ancestors: sibling branches never reach the model.
+    ancestors: sibling branches never reach the model. The one deliberate
+    exception is merge-back (D1): a side branch's summary note sits on its fork
+    origin and is inserted right after that message, so every descendant of the
+    origin sees the side discussion's conclusion without its full transcript.
+    A note is skipped on the branch it summarizes (its source leaf is on this
+    path), since that branch already has the full turns.
     """
+    notes = notes or {}
+    on_path = {m.id for m in path}
     prompt: list[ChatMessage] = []
     for m in path:
         if m.role == Role.user:
@@ -45,7 +61,16 @@ def build_prompt(path: Sequence[Message]) -> list[ChatMessage]:
             prompt.append(ChatMessage("assistant", m.content))
         else:
             prompt.append(ChatMessage("system", m.content))
+        for note in notes.get(m.id, ()):
+            if note.source_leaf_id not in on_path:
+                prompt.append(format_note(note))
     return prompt
+
+
+def prompt_for(db: Session, message_id: str) -> list[ChatMessage]:
+    """The full LLM context for a node: its path plus notes merged onto it."""
+    path = repository.get_path(db, message_id)
+    return build_prompt(path, repository.notes_for(db, [m.id for m in path]))
 
 
 def sse(event: str, data: object) -> str:
@@ -82,7 +107,7 @@ async def stream_reply(
     """
     yield sse("user", MessageOut.model_validate(user_msg).model_dump(mode="json"))
     with session_factory() as db:
-        prompt = build_prompt(repository.get_path(db, user_msg.id))
+        prompt = prompt_for(db, user_msg.id)
         chunks: list[str] = []
         try:
             async for chunk in provider.stream(prompt, max_tokens=max_tokens):

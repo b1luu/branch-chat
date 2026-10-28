@@ -111,7 +111,7 @@ export default function App() {
       </aside>
       <main>
         {activeLeaf && tree && tree.conversationId === activeConversation && (
-          <BranchNav nodes={tree.nodes} activeLeaf={activeLeaf} onSelect={setActiveLeaf} />
+          <BranchNav key={activeLeaf} nodes={tree.nodes} activeLeaf={activeLeaf} onSelect={setActiveLeaf} />
         )}
         {activeLeaf ? (
           <ChatView leafId={activeLeaf} onLeafChange={setActiveLeaf} />

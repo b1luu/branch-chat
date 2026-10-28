@@ -140,7 +140,9 @@ def test_path_returns_root_to_node_without_siblings(client: TestClient, db: Sess
         "content",
         "quote",
         "created_at",
+        "notes",  # D1: merge-back notes pinned to each message
     }
+    assert all(m["notes"] == [] for m in path)
 
 
 def test_path_includes_quote(client: TestClient, db: Session) -> None:

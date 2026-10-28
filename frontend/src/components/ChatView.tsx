@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { selectionInMessage } from "../selection.ts";
 import { getPath, streamReply } from "../api/client.ts";
-import type { Message } from "../api/types.ts";
+import type { Message, Note } from "../api/types.ts";
 
 interface ChatViewProps {
   /** The active leaf: the chat shows the root→leaf path and replies go under it. */
@@ -175,6 +175,7 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
             role={m.role}
             content={m.content}
             quote={m.quote}
+            notes={m.notes}
             onAsk={selection?.messageId === m.id ? askAboutSelection : undefined}
           />
         ))}
@@ -218,12 +219,13 @@ interface BubbleProps {
   role: Message["role"];
   content: string;
   quote?: string | null;
+  notes?: Note[] | undefined;
   streaming?: boolean;
   /** Set when text in this message is highlighted: shows the "Ask about this" button. */
   onAsk?: () => void;
 }
 
-function MessageBubble({ id, role, content, quote, streaming = false, onAsk }: BubbleProps) {
+function MessageBubble({ id, role, content, quote, notes, streaming = false, onAsk }: BubbleProps) {
   return (
     <li
       className={`message message-${role}`}
@@ -239,6 +241,13 @@ function MessageBubble({ id, role, content, quote, streaming = false, onAsk }: B
           Ask about this
         </button>
       )}
+      {notes?.map((n) => (
+        // Outside `.content`, so highlighting a note never offers "Ask about this".
+        <aside key={n.id} className="note" aria-label="Merged note">
+          <span className="note-label">Merged from a side branch</span>
+          <p>{n.content}</p>
+        </aside>
+      ))}
     </li>
   );
 }

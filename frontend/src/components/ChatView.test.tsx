@@ -297,3 +297,32 @@ describe("ChatView — Ask about this", () => {
     expect(screen.queryByLabelText("Asking about")).not.toBeInTheDocument();
   });
 });
+
+describe("ChatView — merged notes", () => {
+  const note = {
+    id: "n1",
+    message_id: "a1",
+    source_leaf_id: "b9",
+    content: "Side branch concluded: CTE means common table expression.",
+    created_at: a1.created_at,
+  };
+
+  it("renders notes under the message they are pinned to", async () => {
+    mockFetch(jsonResponse([root, u1, { ...a1, notes: [note] }, { ...u2, notes: [] }, a2]));
+    render(<ChatView leafId="a2" onLeafChange={vi.fn()} />);
+    const aside = await screen.findByRole("complementary", { name: "Merged note" });
+    expect(aside).toHaveTextContent("Merged from a side branch");
+    expect(aside).toHaveTextContent(note.content);
+    expect(aside.closest("li")).toHaveTextContent("A common table expression.");
+    expect(screen.getAllByRole("complementary", { name: "Merged note" })).toHaveLength(1);
+  });
+
+  it("does not offer Ask about this for text inside a note", async () => {
+    mockFetch(jsonResponse([root, u1, { ...a1, notes: [note] }]));
+    render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    const aside = await screen.findByRole("complementary", { name: "Merged note" });
+    selectText(aside, "concluded");
+    fireEvent.mouseUp(aside);
+    expect(screen.queryByRole("button", { name: "Ask about this" })).not.toBeInTheDocument();
+  });
+});

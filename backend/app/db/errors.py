@@ -8,3 +8,10 @@ class NotFoundError(Exception):
         super().__init__(f"{kind} {id_} not found")
         self.kind = kind
         self.id = id_
+
+
+class ConflictError(Exception):
+    """The request is valid but doesn't fit the current state (e.g. merging the main thread).
+
+    Mapped to HTTP 409 in app.main.
+    """

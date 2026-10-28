@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.routes import router
-from app.db.errors import NotFoundError
+from app.db.errors import ConflictError, NotFoundError
 from app.db.session import make_engine, make_session_factory
 from app.llm import LLMProvider, get_provider
 
@@ -28,6 +28,10 @@ def create_app(
     @app.exception_handler(NotFoundError)
     async def not_found(_request: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(ConflictError)
+    async def conflict(_request: Request, exc: ConflictError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

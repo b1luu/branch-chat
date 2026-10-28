@@ -23,6 +23,17 @@ export interface Message {
   content: string;
   quote: string | null;
   created_at: string;
+  /** Merge-back notes pinned to this message. Sent by `/path` only, not in reply SSE events. */
+  notes?: Note[];
+}
+
+/** A side branch's merge-back summary, attached to the message it forked from. */
+export interface Note {
+  id: string;
+  message_id: string;
+  source_leaf_id: string | null;
+  content: string;
+  created_at: string;
 }
 
 export interface TreeNode {

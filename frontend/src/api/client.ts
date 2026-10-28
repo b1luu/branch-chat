@@ -5,7 +5,7 @@
  * production the web container serves the app on the same origin as the API.
  */
 import { parseSSE } from "./sse.ts";
-import type { Conversation, ConversationCreate, Message, ReplyCreate, Tree } from "./types.ts";
+import type { Conversation, ConversationCreate, Message, Note, ReplyCreate, Tree } from "./types.ts";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -54,6 +54,14 @@ export function getTree(conversationId: string): Promise<Tree> {
 
 export function getPath(messageId: string): Promise<Message[]> {
   return request<Message[]>(`/api/messages/${encodeURIComponent(messageId)}/path`);
+}
+
+/**
+ * Summarize the side branch ending at `leafId` into a note on its fork origin.
+ * 409 if the leaf is on the main thread, 502 if the LLM fails.
+ */
+export function mergeBranch(leafId: string): Promise<Note> {
+  return request<Note>(`/api/branches/${encodeURIComponent(leafId)}/merge`, { method: "POST" });
 }
 
 export interface ReplyHandlers {
