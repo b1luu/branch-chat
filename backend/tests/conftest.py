@@ -13,6 +13,13 @@ from app.llm import MockProvider
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def _no_rate_limit_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests fire many replies from one TestClient IP; the limiter (D3) has
+    its own tests that enable it explicitly via `create_app(rate_limit=...)`."""
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+
+
 @pytest.fixture
 def engine() -> Iterator[Engine]:
     """Fresh in-memory SQLite DB per test."""

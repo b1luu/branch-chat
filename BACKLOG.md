@@ -24,7 +24,7 @@ Each item lists its acceptance criteria. Don't reorder unless an item is blocked
 ## Phase 3 — The differentiators
 - [x] **D1 Merge back**: backend summarize endpoint (uses provider) + note rendering in main thread + notes included in descendants' context. Tests both sides.
 - [x] **D2 Context budget**: token estimate + ancestor summarization when over budget. Tests with a tiny budget.
-- [ ] **D3 Rate limiting**: token-bucket middleware per IP on reply/merge endpoints, 429 with Retry-After. Tests.
+- [x] **D3 Rate limiting**: token-bucket middleware per IP on reply/merge endpoints, 429 with Retry-After. Tests.
 - [ ] **D4 Prompt caching**: Anthropic provider marks the shared ancestor prefix cacheable. Unit test on the request payload.
 
 ## Phase 4 — Ship it
