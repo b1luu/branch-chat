@@ -35,6 +35,9 @@ target-version = "py312"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "ollama: real-model tests against a local Ollama; auto-skipped when unreachable",
+]
 
 [tool.ruff.lint.isort]
 # The local alembic/ migrations dir would otherwise make ruff treat `alembic` as first-party.
