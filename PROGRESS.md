@@ -65,3 +65,10 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Done: `backend/tests/integration/` with registered `ollama` marker. Session fixture probes `{OLLAMA_BASE_URL}/models` (1s) and skips all `ollama` tests if unreachable. 5 tests: multi-chunk non-empty stream, user+assistant nodes persisted, branch prompt has ancestors and not siblings (via `CapturingOllamaProvider` recording `build_payload`), quote in prompt, merge-back note (skips until D1 adds the route).
 - Decisions: tests assert structure only (roles, marker strings we wrote, node parents), never model wording. `LLM_MAX_TOKENS=96` and a "one or two sentences" system prompt keep each test fast. Cloud run: 5 skipped. Dry-ran them against a throwaway fake OpenAI-compatible server (not committed): 4 passed, merge skipped. D1 must make `test_merge_back_produces_nonempty_note` run (route `/api/branches/{leaf_id}/merge`, note on the fork-origin message).
 - Next: L1
+
+## 2026-10-28 15:49 UTC — L1
+- Status: green
+- Done: `scripts/local_test.py` (stdlib only): `git pull --rebase --autostash` → probes Ollama → `pytest -m ollama -q --junitxml` in backend/ with `LLM_PROVIDER=ollama` → appends a LOCAL_TESTS.md entry (SHA, model, pass/total/skipped, first 30 lines per failure) → commits only LOCAL_TESTS.md (`git commit -- LOCAL_TESTS.md`), rebases on origin/main, pushes. `--no-push` writes the report only. 9 unit tests on JUnit parsing, entry format, truncation, not-run note, file appending.
+- Decisions: results parsed from JUnit XML (stable, stdlib `xml.etree`) instead of scraping pytest's console. If Ollama is unreachable the entry says `not run — Ollama not reachable at <url>` rather than "0/5 passed", so the cloud agent doesn't treat it as failures. Exit code 1 when any test fails. Dry-ran with `--no-push` against a fake server (4/5 passed, 1 skipped = merge until D1) and with nothing listening (not-run entry); reverted the report both times.
+- Ready for Brandon: on the PC, `ollama pull llama3.1:8b`, `cd backend && pip install -e ".[dev]"`, then `python scripts/local_test.py`.
+- Next: F1
