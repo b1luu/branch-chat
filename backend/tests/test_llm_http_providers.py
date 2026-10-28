@@ -181,7 +181,10 @@ def test_anthropic_defaults_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert AnthropicProvider().model == "claude-sonnet-x"
 
 
-def test_to_anthropic_messages_splits_system_and_merges_same_role() -> None:
+def test_to_anthropic_messages_splits_leading_system_inlines_notes_merges_same_role() -> None:
+    # D4 changed this: only *leading* system messages go to `system`; a later one
+    # (a merge note) stays in place as a tagged user-turn note, so the cached
+    # prefix before it never changes.
     system, turns = to_anthropic_messages(
         [
             ChatMessage("system", "Be brief."),
@@ -193,11 +196,11 @@ def test_to_anthropic_messages_splits_system_and_merges_same_role() -> None:
             ChatMessage("user", "d"),
         ]
     )
-    assert system == "Be brief.\n\nNote: x"
+    assert system == "Be brief."
     assert turns == [
         {"role": "user", "content": "a\n\nb"},
         {"role": "assistant", "content": "c"},
-        {"role": "user", "content": "d"},
+        {"role": "user", "content": "<system_note>\nNote: x\n</system_note>\n\nd"},
     ]
 
 
@@ -213,7 +216,9 @@ async def test_anthropic_streams_text_deltas_with_correct_request() -> None:
             200, content=sse_body(anthropic_events("A CTE ", "is a query."), event_names=True)
         )
     )
-    chunks = await collect(AnthropicProvider(api_key="secret"), CONTEXT, max_tokens=64)
+    chunks = await collect(
+        AnthropicProvider(api_key="secret", prompt_cache=False), CONTEXT, max_tokens=64
+    )
 
     assert chunks == ["A CTE ", "is a query."]
     req = route.calls.last.request
