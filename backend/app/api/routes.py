@@ -21,7 +21,7 @@ from app.api.schemas import (
 from app.db import repository
 from app.db.models import Message
 from app.llm import LLMProvider
-from app.services import chat, merge
+from app.services import budget, chat, merge
 
 router = APIRouter(prefix="/api")
 DB = Annotated[Session, Depends(get_db)]
@@ -110,7 +110,12 @@ def reply(
     user_msg = chat.create_user_node(db, message_id, body.content, body.quote)
     return StreamingResponse(
         chat.stream_reply(
-            request.app.state.session_factory, llm, user_msg, chat.max_tokens_from_env()
+            request.app.state.session_factory,
+            llm,
+            user_msg,
+            chat.max_tokens_from_env(),
+            context_budget=budget.context_budget_from_env(),
+            summary_max_tokens=budget.summary_max_tokens_from_env(),
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

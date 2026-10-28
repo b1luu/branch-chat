@@ -11,6 +11,7 @@ from app.api.schemas import MessageOut
 from app.db import repository
 from app.db.models import Message, Note, Role
 from app.llm import DEFAULT_MAX_TOKENS, ChatMessage, LLMProvider
+from app.services import budget
 
 logger = logging.getLogger(__name__)
 
@@ -98,16 +99,22 @@ async def stream_reply(
     provider: LLMProvider,
     user_msg: Message,
     max_tokens: int,
+    context_budget: int = budget.DEFAULT_CONTEXT_TOKEN_BUDGET,
+    summary_max_tokens: int = budget.DEFAULT_SUMMARY_MAX_TOKENS,
 ) -> AsyncIterator[str]:
     """SSE body for one reply: `user`, then `token`*, then `done` (or `error`).
 
     Uses its own DB session because the response body runs after the request
     handler returns. The assistant node is written only once the stream
     completes, so a failed or abandoned generation leaves no half-written reply.
+    If the path is over `context_budget` (D2), old ancestors are condensed into
+    one summary message first; nothing about that is persisted to the tree.
     """
     yield sse("user", MessageOut.model_validate(user_msg).model_dump(mode="json"))
     with session_factory() as db:
-        prompt = prompt_for(db, user_msg.id)
+        prompt = await budget.fit_to_budget(
+            prompt_for(db, user_msg.id), provider, context_budget, summary_max_tokens
+        )
         chunks: list[str] = []
         try:
             async for chunk in provider.stream(prompt, max_tokens=max_tokens):
