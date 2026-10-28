@@ -55,3 +55,20 @@ export function controlledSSE(): { response: Response; push: (chunk: string) => 
     close: () => ctrl?.close(),
   };
 }
+
+type Route = (init: RequestInit | undefined) => Response;
+
+/**
+ * Mock fetch by `METHOD path` (e.g. `"GET /api/conversations"`), for components
+ * whose request order isn't fixed. Each route builds a fresh Response per call.
+ * Unrouted requests fail loudly with a 599 so a test can't silently pass.
+ */
+export function routeFetch(routes: Record<string, Route>) {
+  const fn = vi.fn<typeof fetch>(async (input, init) => {
+    const key = `${init?.method ?? "GET"} ${String(input)}`;
+    const route = routes[key];
+    return route ? route(init) : jsonResponse({ detail: `unrouted request: ${key}` }, 599);
+  });
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}

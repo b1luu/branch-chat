@@ -17,7 +17,7 @@ Each item lists its acceptance criteria. Don't reorder unless an item is blocked
 ## Phase 2 — Frontend MVP
 - [x] **F1 Scaffold frontend**: `frontend/` Vite + React + TS, Vitest, ESLint; API client module; dev proxy to backend. Test: app renders.
 - [x] **F2 Chat view**: render active path, input box, streaming assistant reply via SSE. Tests with mocked fetch.
-- [ ] **F3 Tree sidebar**: collapsible tree from `/tree`; click node → becomes active leaf; active path highlighted. Tests.
+- [x] **F3 Tree sidebar**: collapsible tree from `/tree`; click node → becomes active leaf; active path highlighted. Tests.
 - [ ] **F4 Ask about this**: select text in an assistant message → button → creates quote branch from that message. Tests.
 - [ ] **F5 Branch navigation**: breadcrumb + "Back to main thread" (returns to the deepest leaf of the branch you came from). Tests.
 

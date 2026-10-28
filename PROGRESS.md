@@ -88,3 +88,10 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Decisions: `fetch` + `ReadableStream` instead of `EventSource`, because EventSource can't POST a JSON body. Active leaf lives in `App` (F3's sidebar will set it); after `done`, ChatView appends both persisted nodes locally and remembers the new leaf so it doesn't refetch the path it already has. On a failed reply the server keeps the user turn (B6), but the UI leaves the leaf where it was and restores the draft; a retry creates a sibling branch, which the F3 tree will show. Unknown SSE events are ignored for forward-compat. Added a Testing Library `cleanup()` in setup since Vitest globals are off.
 - Deps (frontend dev, new): `@testing-library/user-event` (realistic typing/clicks).
 - Next: F3
+
+## 2026-10-28 18:20 UTC — F3
+- Status: green
+- Done: `TreeSidebar` (ARIA `tree`/`treeitem` with `aria-level`, `aria-selected` on the active leaf, `data-on-path` on the root→leaf path, collapse/expand toggles on forks, click → `onSelect`). Pure helpers in `src/tree.ts` (`childrenIndex`, `pathIds`, `flattenTree`). App tracks the active conversation, renders the sidebar, and clicking a node switches the chat to that branch. 14 new tests (helpers incl. a 20k-deep chain; sidebar render/highlight/select/collapse/refetch/empty/error; App open-with-tree + switch-branch). Added `routeFetch` test helper (mock by `METHOD path`) since App + sidebar + chat now fetch concurrently.
+- Decisions: indentation only at forks — a linear chat stays flat and each child of a fork starts a chain one level deeper, so long chats don't march off-screen and branches stand out. Flattening is iterative (no recursion limit). Sidebar refetches `/tree` only when the conversation changes or the active leaf is an id it hasn't seen (i.e. a reply just created it), so clicking around the tree costs no requests. The system root is hidden; if the first turn itself was branched, those starts are indented under it.
+- Not verified in a browser this sprint (tests only); worth a manual click-through once S1/docker exists.
+- Next: F4

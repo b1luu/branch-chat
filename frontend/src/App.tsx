@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createConversation, getTree, listConversations } from "./api/client.ts";
 import type { Conversation } from "./api/types.ts";
 import ChatView from "./components/ChatView.tsx";
+import TreeSidebar from "./components/TreeSidebar.tsx";
 
 type LoadState =
   | { kind: "loading" }
@@ -12,7 +13,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 /**
  * Pick where to resume a conversation: its most recently created node.
- * (F3's tree sidebar lets the user choose any other node.)
+ * The tree sidebar lets the user choose any other node.
  */
 async function latestNodeId(conversation: Conversation): Promise<string | null> {
   const tree = await getTree(conversation.id);
@@ -23,6 +24,7 @@ async function latestNodeId(conversation: Conversation): Promise<string | null> 
 
 export default function App() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [activeLeaf, setActiveLeaf] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -43,7 +45,9 @@ export default function App() {
   async function openConversation(c: Conversation) {
     setActionError(null);
     try {
-      setActiveLeaf(await latestNodeId(c));
+      const leaf = await latestNodeId(c);
+      setActiveConversation(c.id);
+      setActiveLeaf(leaf);
     } catch (err) {
       setActionError(errorText(err));
     }
@@ -54,6 +58,7 @@ export default function App() {
     try {
       const c = await createConversation();
       setState((s) => (s.kind === "ready" ? { kind: "ready", conversations: [c, ...s.conversations] } : s));
+      setActiveConversation(c.id);
       setActiveLeaf(c.root_message_id);
     } catch (err) {
       setActionError(errorText(err));
@@ -78,7 +83,11 @@ export default function App() {
             <ul aria-label="Conversations">
               {state.conversations.map((c) => (
                 <li key={c.id}>
-                  <button type="button" onClick={() => void openConversation(c)}>
+                  <button
+                    type="button"
+                    aria-current={c.id === activeConversation ? "true" : undefined}
+                    onClick={() => void openConversation(c)}
+                  >
                     {c.title}
                   </button>
                 </li>
@@ -86,6 +95,11 @@ export default function App() {
             </ul>
           ))}
         {actionError && <p role="alert">{actionError}</p>}
+        {activeConversation && (
+          <nav aria-label="Branches">
+            <TreeSidebar conversationId={activeConversation} activeLeaf={activeLeaf} onSelect={setActiveLeaf} />
+          </nav>
+        )}
       </aside>
       <main>
         {activeLeaf ? (
