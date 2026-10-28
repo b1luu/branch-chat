@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { selectionInMessage } from "../selection.ts";
 import { getPath, streamReply } from "../api/client.ts";
 import type { Message } from "../api/types.ts";
 
@@ -11,8 +12,25 @@ interface ChatViewProps {
 
 /** A user turn sent but not yet confirmed by the server's `user` event. */
 interface PendingTurn {
+  /** The message the reply hangs under: the leaf, or an earlier assistant turn for a quote branch. */
+  parentId: string;
   user: Pick<Message, "id" | "role" | "content" | "quote">;
   assistantText: string;
+}
+
+/** Highlighted text in an assistant message: the anchor for a quote branch. */
+export interface QuoteTarget {
+  messageId: string;
+  text: string;
+}
+
+/** Same cap as the backend's `ReplyCreate.quote` (schemas.py). */
+export const MAX_QUOTE_CHARS = 20_000;
+
+/** Messages up to and including `id` (the whole path if `id` isn't on it). */
+function pathThrough(path: Message[], id: string): Message[] {
+  const i = path.findIndex((m) => m.id === id);
+  return i === -1 ? path : path.slice(0, i + 1);
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -31,6 +49,11 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<PendingTurn | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  // Current highlight in an assistant message (shows "Ask about this").
+  const [selection, setSelection] = useState<QuoteTarget | null>(null);
+  // Highlight the user chose to ask about; the next send branches from it.
+  const [quote, setQuote] = useState<QuoteTarget | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // Leaf ids we produced locally, so the effect below can skip a redundant fetch.
   const knownLeaf = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -40,6 +63,8 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
     let cancelled = false;
     setPath(null);
     setLoadError(null);
+    setSelection(null);
+    setQuote(null);
     getPath(leafId)
       .then((messages) => {
         if (cancelled) return;
@@ -64,15 +89,19 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
     if (!content || streaming || path === null) return;
     const controller = new AbortController();
     abortRef.current = controller;
+    // A quote branch hangs under the quoted message, not the current leaf.
+    const parentId = quote?.messageId ?? leafId;
+    const quoteText = quote?.text ?? null;
     setDraft("");
     setSendError(null);
-    setPending({ user: { id: "pending", role: "user", content, quote: null }, assistantText: "" });
+    setSelection(null);
+    setPending({ parentId, user: { id: "pending", role: "user", content, quote: quoteText }, assistantText: "" });
 
     let userNode: Message | null = null;
     try {
       const assistant = await streamReply(
-        leafId,
-        { content },
+        parentId,
+        quoteText === null ? { content } : { content, quote: quoteText },
         {
           onUser: (m) => {
             userNode = m;
@@ -83,16 +112,36 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
         controller.signal,
       );
       const confirmedUser: Message | null = userNode;
-      setPath((p) => [...(p ?? []), ...(confirmedUser ? [confirmedUser] : []), assistant]);
+      // Branching from an earlier message drops the turns below it from view.
+      setPath((p) => [...pathThrough(p ?? [], parentId), ...(confirmedUser ? [confirmedUser] : []), assistant]);
+      setQuote(null);
       knownLeaf.current = assistant.id;
       onLeafChange(assistant.id);
     } catch (err) {
       if (controller.signal.aborted) return;
       setSendError(errorText(err));
-      setDraft((d) => d || content); // let the user retry without retyping
+      setDraft((d) => d || content); // let the user retry without retyping (the quote is kept too)
     } finally {
       if (!controller.signal.aborted) setPending(null);
     }
+  }
+
+  /**
+   * After a mouse/keyboard selection settles, offer "Ask about this" if the
+   * highlight sits inside a single assistant message (see `selectionInMessage`).
+   */
+  function onSelectionEnd() {
+    if (streaming) return;
+    const found = selectionInMessage(window.getSelection(), "assistant");
+    setSelection(found && { messageId: found.messageId, text: found.text.slice(0, MAX_QUOTE_CHARS) });
+  }
+
+  function askAboutSelection() {
+    if (!selection) return;
+    setQuote(selection);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+    inputRef.current?.focus();
   }
 
   function onSubmit(e: FormEvent) {
@@ -111,14 +160,23 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
   if (loadError) return <p role="alert">Couldn't load this conversation: {loadError}</p>;
   if (path === null) return <p role="status">Loading messages…</p>;
 
-  // The root system prompt is context, not chat; hide it.
-  const visible = path.filter((m) => m.role !== "system");
+  // The root system prompt is context, not chat; hide it. While a quote
+  // branch streams, show only the path down to the quoted message.
+  const shown = pending ? pathThrough(path, pending.parentId) : path;
+  const visible = shown.filter((m) => m.role !== "system");
 
   return (
     <section className="chat" aria-label="Chat">
-      <ol className="messages" aria-label="Messages">
+      <ol className="messages" aria-label="Messages" onMouseUp={onSelectionEnd} onKeyUp={onSelectionEnd}>
         {visible.map((m) => (
-          <MessageBubble key={m.id} role={m.role} content={m.content} quote={m.quote} />
+          <MessageBubble
+            key={m.id}
+            id={m.id}
+            role={m.role}
+            content={m.content}
+            quote={m.quote}
+            onAsk={selection?.messageId === m.id ? askAboutSelection : undefined}
+          />
         ))}
         {pending && (
           <>
@@ -130,12 +188,21 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
       {visible.length === 0 && !pending && <p className="empty">Send a message to start.</p>}
       {sendError && <p role="alert">Reply failed: {sendError}</p>}
       <form onSubmit={onSubmit} className="composer">
+        {quote && (
+          <div className="quote-draft" aria-label="Asking about">
+            <blockquote className="quote">{quote.text}</blockquote>
+            <button type="button" onClick={() => setQuote(null)} disabled={streaming}>
+              Cancel quote
+            </button>
+          </div>
+        )}
         <textarea
+          ref={inputRef}
           aria-label="Message"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Ask anything…"
+          placeholder={quote ? "Ask about the quoted text…" : "Ask anything…"}
           rows={3}
         />
         <button type="submit" disabled={streaming || draft.trim() === ""}>
@@ -147,17 +214,31 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
 }
 
 interface BubbleProps {
+  id?: string;
   role: Message["role"];
   content: string;
   quote?: string | null;
   streaming?: boolean;
+  /** Set when text in this message is highlighted: shows the "Ask about this" button. */
+  onAsk?: () => void;
 }
 
-function MessageBubble({ role, content, quote, streaming = false }: BubbleProps) {
+function MessageBubble({ id, role, content, quote, streaming = false, onAsk }: BubbleProps) {
   return (
-    <li className={`message message-${role}`} data-role={role} aria-busy={streaming || undefined}>
+    <li
+      className={`message message-${role}`}
+      data-role={role}
+      data-message-id={id}
+      aria-busy={streaming || undefined}
+    >
       {quote && <blockquote className="quote">{quote}</blockquote>}
       <div className="content">{content || (streaming ? "…" : "")}</div>
+      {onAsk && (
+        // preventDefault on mousedown keeps the highlight while the click lands.
+        <button type="button" className="ask" onMouseDown={(e) => e.preventDefault()} onClick={onAsk}>
+          Ask about this
+        </button>
+      )}
     </li>
   );
 }
