@@ -37,3 +37,8 @@ export interface Tree {
   conversation_id: string;
   nodes: TreeNode[];
 }
+
+export interface ReplyCreate {
+  content: string;
+  quote?: string | null;
+}

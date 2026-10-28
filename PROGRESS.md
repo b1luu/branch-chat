@@ -81,3 +81,10 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Tidy: untracked the committed `scripts/__pycache__/*.pyc` and added `__pycache__/`, `*.pyc`, `node_modules/`, `frontend/dist/` to `.gitignore`.
 - Deps (frontend, new): react, react-dom; dev: vite, @vitejs/plugin-react, typescript, vitest, jsdom, @testing-library/react, @testing-library/jest-dom, eslint, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh, globals, @types/*.
 - Next: F2
+
+## 2026-10-28 18:05 UTC — F2
+- Status: green
+- Done: `ChatView` (renders root→leaf path minus the system root, quote blockquotes, textarea composer with Enter-to-send / Shift+Enter newline, live streaming bubble, error + retry). `streamReply()` in the API client over a hand-written SSE parser (`src/api/sse.ts`). App now has "New conversation" and opens a conversation at its most recent node. 26 new tests (SSE parser: chunk splits mid-line, CRLF, multi-line data, comments, UTF-8 split; streamReply: event dispatch, HTTP/provider/truncated-stream errors; ChatView: path render, progressive tokens via a test-controlled stream, leaf move, no redundant refetch, blank input, errors; App: open + create flows).
+- Decisions: `fetch` + `ReadableStream` instead of `EventSource`, because EventSource can't POST a JSON body. Active leaf lives in `App` (F3's sidebar will set it); after `done`, ChatView appends both persisted nodes locally and remembers the new leaf so it doesn't refetch the path it already has. On a failed reply the server keeps the user turn (B6), but the UI leaves the leaf where it was and restores the draft; a retry creates a sibling branch, which the F3 tree will show. Unknown SSE events are ignored for forward-compat. Added a Testing Library `cleanup()` in setup since Vitest globals are off.
+- Deps (frontend dev, new): `@testing-library/user-event` (realistic typing/clicks).
+- Next: F3

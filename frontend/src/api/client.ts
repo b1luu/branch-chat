@@ -3,9 +3,9 @@
  *
  * All paths are relative (`/api/...`): in dev, Vite proxies them to FastAPI; in
  * production the web container serves the app on the same origin as the API.
- * The streaming reply endpoint (SSE) gets its own helper in F2.
  */
-import type { Conversation, ConversationCreate, Message, Tree } from "./types.ts";
+import { parseSSE } from "./sse.ts";
+import type { Conversation, ConversationCreate, Message, ReplyCreate, Tree } from "./types.ts";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -54,4 +54,53 @@ export function getTree(conversationId: string): Promise<Tree> {
 
 export function getPath(messageId: string): Promise<Message[]> {
   return request<Message[]>(`/api/messages/${encodeURIComponent(messageId)}/path`);
+}
+
+export interface ReplyHandlers {
+  /** The persisted user node (sent first, before any tokens). */
+  onUser?: (message: Message) => void;
+  /** One chunk of assistant text. */
+  onToken?: (text: string) => void;
+}
+
+/**
+ * POST a reply under `parentId` and consume the SSE stream.
+ *
+ * Event protocol (see backend `chat.stream_reply`): `user` → `token`* → `done`,
+ * or `error` instead of `done` if the provider fails. Every `data` is JSON.
+ * Resolves with the persisted assistant message; rejects with `ApiError` for an
+ * HTTP error status, a provider `error` event, or a stream that ends early.
+ */
+export async function streamReply(
+  parentId: string,
+  body: ReplyCreate,
+  handlers: ReplyHandlers = {},
+  signal?: AbortSignal,
+): Promise<Message> {
+  const res = await fetch(`/api/messages/${encodeURIComponent(parentId)}/reply`, {
+    method: "POST",
+    headers: { Accept: "text/event-stream", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (!res.body) throw new ApiError(res.status, "Reply stream had no body");
+
+  for await (const { event, data } of parseSSE(res.body)) {
+    const payload: unknown = JSON.parse(data);
+    switch (event) {
+      case "user":
+        handlers.onUser?.(payload as Message);
+        break;
+      case "token":
+        handlers.onToken?.((payload as { text: string }).text);
+        break;
+      case "done":
+        return payload as Message;
+      case "error":
+        throw new ApiError(res.status, (payload as { detail: string }).detail);
+      // Unknown events are ignored so the server can add new ones safely.
+    }
+  }
+  throw new ApiError(res.status, "Reply stream ended before the assistant finished");
 }
