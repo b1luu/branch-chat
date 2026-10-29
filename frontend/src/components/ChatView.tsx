@@ -62,12 +62,22 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
   // Leaf ids we produced locally, so the effect below can skip a redundant fetch.
   const knownLeaf = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * The send whose results may still update this view. Navigating to a leaf we
+   * didn't create (another branch or conversation) detaches it: the request
+   * keeps running so the server still persists the reply, but its tokens,
+   * result and errors no longer touch this view (they belong to another path).
+   */
+  const activeSend = useRef<symbol | null>(null);
   // Bumped by "Try again" to re-run a failed path fetch.
   const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     if (knownLeaf.current === leafId) return;
     let cancelled = false;
+    activeSend.current = null; // detach any in-flight reply (see `activeSend`)
+    setPending(null);
+    setSendError(null);
     setPath(null);
     setLoadError(null);
     setSelection(null);
@@ -97,6 +107,9 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
     if (!content || tooLong || streaming || path === null) return;
     const controller = new AbortController();
     abortRef.current = controller;
+    const sendId = Symbol("send");
+    activeSend.current = sendId;
+    const attached = () => activeSend.current === sendId;
     // A quote branch hangs under the quoted message, not the current leaf.
     const parentId = quote?.messageId ?? leafId;
     const quoteText = quote?.text ?? null;
@@ -113,12 +126,15 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
         {
           onUser: (m) => {
             userNode = m;
-            setPending((p) => (p ? { ...p, user: m } : p));
+            if (attached()) setPending((p) => (p ? { ...p, user: m } : p));
           },
-          onToken: (text) => setPending((p) => (p ? { ...p, assistantText: p.assistantText + text } : p)),
+          onToken: (text) => {
+            if (attached()) setPending((p) => (p ? { ...p, assistantText: p.assistantText + text } : p));
+          },
         },
         controller.signal,
       );
+      if (!attached()) return;
       const confirmedUser: Message | null = userNode;
       // Branching from an earlier message drops the turns below it from view.
       setPath((p) => [...pathThrough(p ?? [], parentId), ...(confirmedUser ? [confirmedUser] : []), assistant]);
@@ -126,11 +142,14 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
       knownLeaf.current = assistant.id;
       onLeafChange(assistant.id);
     } catch (err) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !attached()) return;
       setSendError(errorText(err));
       setDraft((d) => d || content); // let the user retry without retyping (the quote is kept too)
     } finally {
-      if (!controller.signal.aborted) setPending(null);
+      if (!controller.signal.aborted && attached()) {
+        activeSend.current = null;
+        setPending(null);
+      }
     }
   }
 

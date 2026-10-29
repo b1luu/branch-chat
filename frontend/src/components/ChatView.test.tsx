@@ -326,3 +326,89 @@ describe("ChatView — merged notes", () => {
     expect(screen.queryByRole("button", { name: "Ask about this" })).not.toBeInTheDocument();
   });
 });
+
+describe("ChatView — navigating away mid-stream", () => {
+  // Another branch / conversation the user clicks while a reply is still streaming.
+  const ub = msg({ id: "ub", parent_id: "root", content: "Other branch question" });
+  const ab = msg({ id: "ab", parent_id: "ub", role: "assistant", content: "Other branch answer" });
+
+  async function startStreaming(onLeafChange: (id: string) => void) {
+    const stream = controlledSSE();
+    const fetchMock = mockFetch(jsonResponse([root, u1, a1]), stream.response, jsonResponse([root, ub, ab]));
+    const ui = userEvent.setup();
+    const view = render(<ChatView leafId="a1" onLeafChange={onLeafChange} />);
+    await screen.findByText("What is a CTE?");
+    await ui.type(screen.getByRole("textbox", { name: "Message" }), "Recursive?{Enter}");
+    stream.push(sseEvent("user", u2));
+    stream.push(sseEvent("token", { text: "Yes, " }));
+    await waitFor(() => expect(messages().at(-1)).toHaveTextContent("Yes,"));
+    return { stream, fetchMock, ui, view };
+  }
+
+  it("shows the newly selected path, not the old branch's streaming turn", async () => {
+    const onLeafChange = vi.fn();
+    const { view } = await startStreaming(onLeafChange);
+
+    view.rerender(<ChatView leafId="ab" onLeafChange={onLeafChange} />);
+    await screen.findByText("Other branch answer");
+    expect(messages().map((li) => li.textContent)).toEqual(["Other branch question", "Other branch answer"]);
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument(); // not "Sending…"
+  });
+
+  it("lets the old reply finish in the background without hijacking the view", async () => {
+    const onLeafChange = vi.fn();
+    const { stream, fetchMock, view } = await startStreaming(onLeafChange);
+
+    view.rerender(<ChatView leafId="ab" onLeafChange={onLeafChange} />);
+    await screen.findByText("Other branch answer");
+    stream.push(sseEvent("token", { text: "it can recurse." }));
+    stream.push(sseEvent("done", a2));
+    stream.close();
+
+    // Give the finished stream a chance to (wrongly) update state.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onLeafChange).not.toHaveBeenCalled();
+    expect(messages().map((li) => li.textContent)).toEqual(["Other branch question", "Other branch answer"]);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // Not aborted: the server still gets to persist the reply the user asked for.
+    const [, init] = fetchCall(fetchMock, 1);
+    expect(init?.signal?.aborted).toBe(false);
+  });
+
+  it("doesn't surface the old reply's failure or restore its draft on the new branch", async () => {
+    const onLeafChange = vi.fn();
+    const { stream, view } = await startStreaming(onLeafChange);
+
+    view.rerender(<ChatView leafId="ab" onLeafChange={onLeafChange} />);
+    await screen.findByText("Other branch answer");
+    stream.push(sseEvent("error", { detail: "model crashed" }));
+    stream.close();
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+  });
+
+  it("can send on the new branch while the old reply is still streaming", async () => {
+    const onLeafChange = vi.fn();
+    const { fetchMock, ui, view } = await startStreaming(onLeafChange);
+    const ub2 = msg({ id: "ub2", parent_id: "ab", content: "Follow-up" });
+    const ab2 = msg({ id: "ab2", parent_id: "ub2", role: "assistant", content: "Follow-up answer" });
+    fetchMock.mockResolvedValueOnce(
+      sseResponse([sseEvent("user", ub2), sseEvent("token", { text: "Follow-up answer" }), sseEvent("done", ab2)]),
+    );
+
+    view.rerender(<ChatView leafId="ab" onLeafChange={onLeafChange} />);
+    await screen.findByText("Other branch answer");
+    await ui.type(screen.getByRole("textbox", { name: "Message" }), "Follow-up{Enter}");
+
+    await waitFor(() => expect(onLeafChange).toHaveBeenCalledWith("ab2"));
+    expect(fetchCall(fetchMock, 3)[0]).toBe("/api/messages/ab/reply");
+    expect(messages().map((li) => li.textContent)).toEqual([
+      "Other branch question",
+      "Other branch answer",
+      "Follow-up",
+      "Follow-up answer",
+    ]);
+  });
+});

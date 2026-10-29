@@ -178,3 +178,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Decisions: backend coverage is 99% and frontend ~97% statements (measured ad hoc with pytest-cov / @vitest/coverage-v8, not added as deps), so this pass hunted for real bugs instead of padding coverage. Our backend emits `\n` only, so Q1 bites only behind a proxy that rewrites line endings — cheap to make robust. `ruff format --check` flags 2 pre-existing files (`app/services/chat.py` …); not part of the required check, left alone.
 - No new deps.
 - Next: backlog complete. Still suggest a styling backlog item (S3 finding: no CSS) so the README can get a real screenshot.
+
+## 2026-10-29 21:55 UTC — Q3 (post-backlog bug pass)
+- Status: green
+- Done: **Q3** ChatView: switching branch or conversation while a reply was streaming kept the old branch's pending turn on screen (appended to the new path), kept "Sending…" blocking the composer, and on `done` appended the old reply to the *new* path and called `onLeafChange` with a node from the other branch/conversation (sidebar on conversation B, chat leaf in A). Now an externally driven leaf change *detaches* the in-flight send (`activeSend` ref token): its tokens, result and errors are ignored and the view resets, but the request is **not** aborted, so the server still persists the reply the user asked for. 4 new tests (new path shown, background finish doesn't hijack leaf/path and isn't aborted, old failure/draft not surfaced, can send on the new branch while the old stream runs); all 4 failed before the fix.
+- Decisions: detach rather than abort — aborting would throw away a reply mid-generation (and leave a childless user turn that only S4's retry-reuse cleans up). Known gap, left as is: the sidebar tree doesn't learn about the background reply until its next refetch (any new node or reopening the conversation), so it can briefly look missing.
+- Checks: backend ruff + pytest (201 passed, 11 skipped), frontend lint + 113 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggest a styling backlog item (S3 finding: no CSS) so the README can get a real screenshot.
