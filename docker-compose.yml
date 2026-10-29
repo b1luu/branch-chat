@@ -1,0 +1,50 @@
+# docker compose up --build  →  web on http://localhost:8080, API on :8000, Postgres on :5432.
+# Provider config comes from .env (copy .env.example); defaults to the mock LLM.
+# For a local Ollama on the host: LLM_PROVIDER=ollama in .env (OLLAMA_BASE_URL is set below).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: branch_chat
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d branch_chat"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/branch_chat
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      # Ollama running on the host machine (not in compose).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL_DOCKER:-http://host.docker.internal:11434/v1}
+      # Every browser request arrives via the web container; key rate limits on X-Forwarded-For.
+      RATE_LIMIT_TRUST_PROXY: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:8000:8000"  # direct API access for dev; browsers go through web
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

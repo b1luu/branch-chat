@@ -28,7 +28,7 @@ Each item lists its acceptance criteria. Don't reorder unless an item is blocked
 - [x] **D4 Prompt caching**: Anthropic provider marks the shared ancestor prefix cacheable. Unit test on the request payload.
 
 ## Phase 4 — Ship it
-- [ ] **S1 Docker**: Dockerfiles + `docker-compose.yml` (postgres, api, web); Alembic runs on start. Smoke test script.
+- [x] **S1 Docker**: Dockerfiles + `docker-compose.yml` (postgres, api, web); Alembic runs on start. Smoke test script.
 - [ ] **S2 CI**: GitHub Actions running ruff, pytest, eslint, vitest, frontend build on push/PR.
 - [ ] **S3 README**: pitch, Mermaid architecture diagram, setup (local Ollama + Haiku), design decisions (tree model, recursive CTE, caching, budget), screenshot placeholder.
 - [ ] **S4 Hardening pass**: error states in UI, empty states, input validation, loading indicators. Tests for each.
