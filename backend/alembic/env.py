@@ -28,13 +28,18 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     engine = make_engine(_url())
-    with engine.connect() as connection:
-        # render_as_batch lets ALTERs work on SQLite.
-        context.configure(
-            connection=connection, target_metadata=target_metadata, render_as_batch=True
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+    try:
+        with engine.connect() as connection:
+            # render_as_batch lets ALTERs work on SQLite.
+            context.configure(
+                connection=connection, target_metadata=target_metadata, render_as_batch=True
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        # Close the pooled connection now; otherwise each migration run (tests,
+        # the container entrypoint) leaves one open until garbage collection.
+        engine.dispose()
 
 
 if context.is_offline_mode():

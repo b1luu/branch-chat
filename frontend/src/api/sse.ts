@@ -33,11 +33,19 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerato
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // A chunk ending in "\r" might be the first half of a CRLF. Normalizing it to
+  // "\n" right away would turn the next chunk's "\n" into a second line break
+  // (a fake blank line that ends the event early), so hold it back until the
+  // next chunk shows what follows.
+  let pendingCR = false;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true }).replace(/\r\n?/g, "\n");
+      let text: string = (pendingCR ? "\r" : "") + decoder.decode(value, { stream: true });
+      pendingCR = text.endsWith("\r");
+      if (pendingCR) text = text.slice(0, -1);
+      buffer += text.replace(/\r\n?/g, "\n");
       let end: number;
       while ((end = buffer.indexOf("\n\n")) !== -1) {
         const parsed = parseBlock(buffer.slice(0, end));
@@ -46,7 +54,7 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerato
       }
     }
     // A final event without the trailing blank line still counts.
-    const parsed = parseBlock(buffer + decoder.decode());
+    const parsed = parseBlock(buffer + decoder.decode().replace(/\r\n?/g, "\n"));
     if (parsed) yield parsed;
   } finally {
     reader.releaseLock();

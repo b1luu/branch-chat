@@ -31,6 +31,21 @@ describe("parseSSE", () => {
     expect(await collect(["event: a\r\ndata: 1\r", "\n\r\n"])).toEqual([{ event: "a", data: "1" }]);
   });
 
+  it("keeps the event name when a CRLF inside an event is split across chunks", async () => {
+    // A lone trailing "\r" used to become "\n", and the next chunk's "\n" then made
+    // a premature blank line, splitting `event:` from its `data:`.
+    expect(await collect(["event: token\r", "\ndata: 1\r\n\r\n"])).toEqual([{ event: "token", data: "1" }]);
+    expect(await collect(["event: a\r\ndata: 1\r", "\n", "\r", "\nevent: b\r\ndata: 2\r\n\r\n"])).toEqual([
+      { event: "a", data: "1" },
+      { event: "b", data: "2" },
+    ]);
+  });
+
+  it("treats a bare CR as a line ending, even at the end of the stream", async () => {
+    expect(await collect(["event: a\rdata: 1\r\r"])).toEqual([{ event: "a", data: "1" }]);
+    expect(await collect(["event: a\rdata: 1\r"])).toEqual([{ event: "a", data: "1" }]);
+  });
+
   it("joins multiple data lines and defaults the event name", async () => {
     expect(await collect(["data: line1\ndata: line2\n\n"])).toEqual([{ event: "message", data: "line1\nline2" }]);
   });
