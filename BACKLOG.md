@@ -31,7 +31,7 @@ Each item lists its acceptance criteria. Don't reorder unless an item is blocked
 - [x] **S1 Docker**: Dockerfiles + `docker-compose.yml` (postgres, api, web); Alembic runs on start. Smoke test script.
 - [x] **S2 CI**: GitHub Actions running ruff, pytest, eslint, vitest, frontend build on push/PR.
 - [x] **S3 README**: pitch, Mermaid architecture diagram, setup (local Ollama + Haiku), design decisions (tree model, recursive CTE, caching, budget), screenshot placeholder.
-- [ ] **S4 Hardening pass**: error states in UI, empty states, input validation, loading indicators. Tests for each.
+- [x] **S4 Hardening pass**: error states in UI, empty states, input validation, loading indicators. Tests for each.
 
 ## After the backlog is done
 Don't invent big features. Pick the weakest-tested module, raise coverage, fix bugs, improve error handling, and tidy code. Log it in PROGRESS.md.

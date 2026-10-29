@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getTree } from "../api/client.ts";
 import type { TreeNode } from "../api/types.ts";
 import { flattenTree, pathIds } from "../tree.ts";
+import ErrorNotice from "./ErrorNotice.tsx";
 
 interface TreeSidebarProps {
   conversationId: string;
@@ -24,6 +25,8 @@ export default function TreeSidebar({ conversationId, activeLeaf, onSelect, onTr
   const [tree, setTree] = useState<{ conversationId: string; nodes: TreeNode[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // Bumped by "Try again" to re-run a failed fetch.
+  const [attempt, setAttempt] = useState(0);
 
   const current = tree?.conversationId === conversationId ? tree : null;
   const needsFetch = current === null || (activeLeaf !== null && !current.nodes.some((n) => n.id === activeLeaf));
@@ -46,7 +49,7 @@ export default function TreeSidebar({ conversationId, activeLeaf, onSelect, onTr
     };
     // onTreeChange is a notification sink; a new callback identity shouldn't refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, activeLeaf, needsFetch]);
+  }, [conversationId, activeLeaf, needsFetch, attempt]);
 
   const nodes = current?.nodes;
   const rows = useMemo(() => (nodes ? flattenTree(nodes, collapsed) : []), [nodes, collapsed]);
@@ -61,48 +64,56 @@ export default function TreeSidebar({ conversationId, activeLeaf, onSelect, onTr
     });
   }
 
-  if (error && !current) return <p role="alert">Couldn't load the tree: {error}</p>;
+  const retry = () => {
+    setError(null);
+    setAttempt((n) => n + 1);
+  };
+  if (error && !current) return <ErrorNotice title="Couldn't load the tree" message={error} onRetry={retry} />;
   if (!current) return <p role="status">Loading tree…</p>;
   if (rows.length === 0) return <p className="tree-empty">No messages yet.</p>;
 
   return (
-    <ul role="tree" aria-label="Conversation tree" className="tree">
-      {rows.map(({ node, depth, forkSize }) => {
-        const isFork = forkSize > 0;
-        const isCollapsed = collapsed.has(node.id);
-        const active = node.id === activeLeaf;
-        return (
-          <li
-            key={node.id}
-            role="treeitem"
-            aria-level={depth + 1}
-            aria-selected={active}
-            aria-expanded={isFork ? !isCollapsed : undefined}
-            data-on-path={onPath.has(node.id) || undefined}
-            className={`tree-node tree-${node.role}${onPath.has(node.id) ? " on-path" : ""}${active ? " active" : ""}`}
-            style={{ paddingLeft: `${depth}rem` }}
-          >
-            {isFork && (
+    <>
+      {/* A refresh failed after a reply: keep showing the last tree, offer a retry. */}
+      {error && <ErrorNotice title="Couldn't refresh the tree" message={error} onRetry={retry} />}
+      <ul role="tree" aria-label="Conversation tree" className="tree">
+        {rows.map(({ node, depth, forkSize }) => {
+          const isFork = forkSize > 0;
+          const isCollapsed = collapsed.has(node.id);
+          const active = node.id === activeLeaf;
+          return (
+            <li
+              key={node.id}
+              role="treeitem"
+              aria-level={depth + 1}
+              aria-selected={active}
+              aria-expanded={isFork ? !isCollapsed : undefined}
+              data-on-path={onPath.has(node.id) || undefined}
+              className={`tree-node tree-${node.role}${onPath.has(node.id) ? " on-path" : ""}${active ? " active" : ""}`}
+              style={{ paddingLeft: `${depth}rem` }}
+            >
+              {isFork && (
+                <button
+                  type="button"
+                  className="tree-toggle"
+                  aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${forkSize} branches`}
+                  onClick={() => toggle(node.id)}
+                >
+                  {isCollapsed ? "▸" : "▾"}
+                </button>
+              )}
               <button
                 type="button"
-                className="tree-toggle"
-                aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${forkSize} branches`}
-                onClick={() => toggle(node.id)}
+                className="tree-label"
+                aria-current={active ? "true" : undefined}
+                onClick={() => onSelect(node.id)}
               >
-                {isCollapsed ? "▸" : "▾"}
+                <span className="tree-role">{ROLE_LABEL[node.role]}:</span> {node.preview || "(empty)"}
               </button>
-            )}
-            <button
-              type="button"
-              className="tree-label"
-              aria-current={active ? "true" : undefined}
-              onClick={() => onSelect(node.id)}
-            >
-              <span className="tree-role">{ROLE_LABEL[node.role]}:</span> {node.preview || "(empty)"}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }

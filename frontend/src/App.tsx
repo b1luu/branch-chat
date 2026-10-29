@@ -3,6 +3,7 @@ import { createConversation, getTree, listConversations } from "./api/client.ts"
 import type { Conversation, TreeNode } from "./api/types.ts";
 import BranchNav from "./components/BranchNav.tsx";
 import ChatView from "./components/ChatView.tsx";
+import ErrorNotice from "./components/ErrorNotice.tsx";
 import TreeSidebar from "./components/TreeSidebar.tsx";
 
 type LoadState =
@@ -28,6 +29,10 @@ export default function App() {
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [activeLeaf, setActiveLeaf] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Bumped by "Try again" to re-run the conversation list fetch.
+  const [listAttempt, setListAttempt] = useState(0);
+  // Which action is in flight, so its button can show progress and not double-fire.
+  const [busy, setBusy] = useState<{ kind: "creating" } | { kind: "opening"; id: string } | null>(null);
   // Latest `/tree` the sidebar fetched, tagged with its conversation so a stale one is never used.
   const [tree, setTree] = useState<{ conversationId: string; nodes: TreeNode[] } | null>(null);
 
@@ -43,28 +48,36 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [listAttempt]);
 
   async function openConversation(c: Conversation) {
+    if (busy) return;
     setActionError(null);
+    setBusy({ kind: "opening", id: c.id });
     try {
       const leaf = await latestNodeId(c);
       setActiveConversation(c.id);
       setActiveLeaf(leaf);
     } catch (err) {
-      setActionError(errorText(err));
+      setActionError(`Couldn't open "${c.title}": ${errorText(err)}`);
+    } finally {
+      setBusy(null);
     }
   }
 
   async function newConversation() {
+    if (busy) return;
     setActionError(null);
+    setBusy({ kind: "creating" });
     try {
       const c = await createConversation();
       setState((s) => (s.kind === "ready" ? { kind: "ready", conversations: [c, ...s.conversations] } : s));
       setActiveConversation(c.id);
       setActiveLeaf(c.root_message_id);
     } catch (err) {
-      setActionError(errorText(err));
+      setActionError(`Couldn't create a conversation: ${errorText(err)}`);
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -74,14 +87,26 @@ export default function App() {
         <h1>Branch Chat</h1>
       </header>
       <aside>
-        <button type="button" onClick={() => void newConversation()}>
-          New conversation
+        <button type="button" onClick={() => void newConversation()} disabled={busy !== null}>
+          {busy?.kind === "creating" ? "Creating…" : "New conversation"}
         </button>
         {state.kind === "loading" && <p role="status">Loading conversations…</p>}
-        {state.kind === "error" && <p role="alert">Couldn't load conversations: {state.message}</p>}
+        {state.kind === "error" && (
+          <ErrorNotice
+            title="Couldn't load conversations"
+            message={state.message}
+            onRetry={() => {
+              setState({ kind: "loading" });
+              setListAttempt((n) => n + 1);
+            }}
+          />
+        )}
         {state.kind === "ready" &&
           (state.conversations.length === 0 ? (
-            <p>No conversations yet.</p>
+            <div className="empty">
+              <p>No conversations yet.</p>
+              <p>Start one with “New conversation”.</p>
+            </div>
           ) : (
             <ul aria-label="Conversations">
               {state.conversations.map((c) => (
@@ -89,6 +114,8 @@ export default function App() {
                   <button
                     type="button"
                     aria-current={c.id === activeConversation ? "true" : undefined}
+                    aria-busy={busy?.kind === "opening" && busy.id === c.id ? true : undefined}
+                    disabled={busy !== null}
                     onClick={() => void openConversation(c)}
                   >
                     {c.title}
@@ -97,7 +124,15 @@ export default function App() {
               ))}
             </ul>
           ))}
-        {actionError && <p role="alert">{actionError}</p>}
+        {busy?.kind === "opening" && <p role="status">Opening conversation…</p>}
+        {actionError && (
+          <div role="alert" className="error-notice">
+            <p>{actionError}</p>
+            <button type="button" onClick={() => setActionError(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
         {activeConversation && (
           <nav aria-label="Branches">
             <TreeSidebar

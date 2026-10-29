@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { selectionInMessage } from "../selection.ts";
 import { getPath, streamReply } from "../api/client.ts";
 import type { Message, Note } from "../api/types.ts";
+import ErrorNotice from "./ErrorNotice.tsx";
 
 interface ChatViewProps {
   /** The active leaf: the chat shows the root→leaf path and replies go under it. */
@@ -26,6 +27,10 @@ export interface QuoteTarget {
 
 /** Same cap as the backend's `ReplyCreate.quote` (schemas.py). */
 export const MAX_QUOTE_CHARS = 20_000;
+/** Same cap as the backend's `ReplyCreate.content` (schemas.py); checked here so the user never gets a 422. */
+export const MAX_CONTENT_CHARS = 50_000;
+/** Show the character counter once a draft gets this close to the cap. */
+const COUNTER_FROM = Math.floor(MAX_CONTENT_CHARS * 0.9);
 
 /** Messages up to and including `id` (the whole path if `id` isn't on it). */
 function pathThrough(path: Message[], id: string): Message[] {
@@ -57,6 +62,8 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
   // Leaf ids we produced locally, so the effect below can skip a redundant fetch.
   const knownLeaf = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Bumped by "Try again" to re-run a failed path fetch.
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     if (knownLeaf.current === leafId) return;
@@ -77,16 +84,17 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [leafId]);
+  }, [leafId, loadAttempt]);
 
   // Abort an in-flight stream if the view unmounts.
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const streaming = pending !== null;
+  const tooLong = draft.length > MAX_CONTENT_CHARS;
 
   async function send() {
     const content = draft.trim();
-    if (!content || streaming || path === null) return;
+    if (!content || tooLong || streaming || path === null) return;
     const controller = new AbortController();
     abortRef.current = controller;
     // A quote branch hangs under the quoted message, not the current leaf.
@@ -157,7 +165,14 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
     }
   }
 
-  if (loadError) return <p role="alert">Couldn't load this conversation: {loadError}</p>;
+  if (loadError)
+    return (
+      <ErrorNotice
+        title="Couldn't load this conversation"
+        message={loadError}
+        onRetry={() => setLoadAttempt((n) => n + 1)}
+      />
+    );
   if (path === null) return <p role="status">Loading messages…</p>;
 
   // The root system prompt is context, not chat; hide it. While a quote
@@ -205,8 +220,17 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
           onKeyDown={onKeyDown}
           placeholder={quote ? "Ask about the quoted text…" : "Ask anything…"}
           rows={3}
+          aria-invalid={tooLong || undefined}
+          aria-describedby={draft.length >= COUNTER_FROM ? "composer-count" : undefined}
         />
-        <button type="submit" disabled={streaming || draft.trim() === ""}>
+        {draft.length >= COUNTER_FROM && (
+          <p id="composer-count" className={`char-count${tooLong ? " over" : ""}`} aria-live="polite">
+            {tooLong
+              ? `Message is too long: ${draft.length.toLocaleString("en-US")} / ${MAX_CONTENT_CHARS.toLocaleString("en-US")} characters.`
+              : `${draft.length.toLocaleString("en-US")} / ${MAX_CONTENT_CHARS.toLocaleString("en-US")} characters`}
+          </p>
+        )}
+        <button type="submit" disabled={streaming || tooLong || draft.trim() === ""}>
           {streaming ? "Sending…" : "Send"}
         </button>
       </form>

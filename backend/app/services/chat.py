@@ -80,8 +80,17 @@ def sse(event: str, data: object) -> str:
 
 
 def create_user_node(db: Session, parent_id: str, content: str, quote: str | None) -> Message:
-    """Persist the user's turn as a new child of `parent_id` (a branch if it has siblings)."""
+    """Persist the user's turn as a new child of `parent_id` (a branch if it has siblings).
+
+    Retry after a failed reply: if the provider errored, the user turn was kept
+    with no assistant child. Re-sending the same text under the same parent
+    reuses that orphan instead of adding an identical sibling, so a retry
+    doesn't show up as a spurious side branch in the tree.
+    """
     parent = repository.get_message(db, parent_id)
+    orphan = repository.childless_user_turn(db, parent.id, content, quote)
+    if orphan is not None:
+        return orphan
     msg = Message(
         conversation_id=parent.conversation_id,
         parent_id=parent.id,

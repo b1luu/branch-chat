@@ -106,6 +106,32 @@ def get_tree(db: Session, conversation_id: str) -> list[Message]:
     return list(db.scalars(stmt).all())
 
 
+def childless_user_turn(
+    db: Session, parent_id: str, content: str, quote: str | None
+) -> Message | None:
+    """Newest user child of `parent_id` with this exact text and quote and no replies.
+
+    That's the shape a failed reply leaves behind (B6 keeps the user turn,
+    persists no assistant), so a retry can reuse it. Exact match only: any
+    edit to the text is a genuinely new turn.
+    """
+    reply = aliased(Message)
+    has_reply = select(reply.id).where(reply.parent_id == Message.id).exists()
+    stmt = (
+        select(Message)
+        .where(
+            Message.parent_id == parent_id,
+            Message.role == Role.user,
+            Message.content == content,
+            Message.quote.is_(None) if quote is None else Message.quote == quote,
+            ~has_reply,
+        )
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(1)
+    )
+    return db.scalars(stmt).first()
+
+
 def side_branch_start(db: Session, path: Sequence[Message]) -> int:
     """Index in `path` (root→leaf) of the first node of the innermost side branch.
 
