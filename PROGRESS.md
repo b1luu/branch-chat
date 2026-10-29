@@ -154,3 +154,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Decisions: plain-text workflow tests instead of adding PyYAML; the CLAUDE.md-sync test reads the sprint-loop commands straight from CLAUDE.md so CI and the local check can't drift. `concurrency` cancels superseded runs; `permissions: contents: read`; pip/npm caches keyed on pyproject/lockfile. `ollama` tests auto-skip in CI (no Ollama reachable), as designed in B8.
 - No new deps (actionlint was used ad hoc, not committed).
 - Next: S3
+
+## 2026-10-29 16:50 UTC — S3
+- Status: green (S2's first CI run on GitHub was green on all 3 jobs, incl. the docker smoke test)
+- Done: README rewritten: pitch, CI badge, features, Mermaid architecture diagram (browser → nginx → rate limit → routes → services → CTE repo/Postgres + provider → Ollama/Anthropic), reply data-flow, Docker quick start (mock / Ollama / Haiku), local dev, test tiers table, config table, design decisions (tree model, recursive CTE with the SQL, SSE, prompt caching, context budget, merge back, rate limiting), layout. 14 new tests in `test_readme.py` (diagram present, required sections, design topics, screenshot placeholder, relative links resolve, every env var in the config table exists in `.env.example`).
+- Verified: Mermaid block renders with `mmdc`.
+- Finding: I brought the stack up, built a real branched conversation (quote branch + merge back) and screenshotted it with Playwright. Everything works (tree, breadcrumb, Merge back, merged note, quote), but **the frontend has no CSS at all**: default browser buttons and bullet lists. Not a README screenshot yet, so the README keeps a placeholder (as the spec allows) with a TODO. Suggest a backlog item for basic styling (layout: sidebar + chat pane, message bubbles, tree indentation); not added myself since it isn't in the backlog.
+- Decisions: Ollama in Docker needs `OLLAMA_HOST=0.0.0.0` on Linux so the container can reach it via host-gateway; documented.
+- No new deps.
+- Next: S4
