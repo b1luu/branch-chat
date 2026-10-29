@@ -146,3 +146,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Env note for cloud runs: the sandbox's Docker daemon isn't running by default (`nohup dockerd &` works as root); Docker Hub returns 429, so base images were pulled from `mirror.gcr.io/library/*` and retagged; containers don't trust the egress proxy CA, so the images were built from throwaway copies of the Dockerfiles with the CA + proxy injected (not committed). The committed Dockerfiles are unchanged standard ones.
 - No new deps.
 - Next: S2
+
+## 2026-10-29 16:35 UTC — S2
+- Status: green (CI itself first runs on this push)
+- Done: `.github/workflows/ci.yml` on push to main + PRs: `backend` (Python 3.12, `pip install -e ".[dev]"`, `ruff check .`, `pytest -q` with a Postgres 16 service + `TEST_POSTGRES_URL`, so the `any_db` CTE tests run on Postgres too), `frontend` (Node 22, `npm ci`, lint, `vitest --run`, build), and `docker` (after both pass: `python3 scripts/smoke_test.py --compose`, building the real images and smoke-testing the stack). 12 new tests in `test_ci_workflow.py` (triggers, every check present, mock LLM + Postgres env, every command in CLAUDE.md's full check is also in CI, no secrets referenced).
+- Verified locally: backend suite against a real Postgres 16 container (161 passed, only the 5 `ollama` tests skipped); workflow passes `actionlint` and parses as YAML.
+- Decisions: plain-text workflow tests instead of adding PyYAML; the CLAUDE.md-sync test reads the sprint-loop commands straight from CLAUDE.md so CI and the local check can't drift. `concurrency` cancels superseded runs; `permissions: contents: read`; pip/npm caches keyed on pyproject/lockfile. `ollama` tests auto-skip in CI (no Ollama reachable), as designed in B8.
+- No new deps (actionlint was used ad hoc, not committed).
+- Next: S3
