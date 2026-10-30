@@ -211,3 +211,10 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Verified: full backend suite also on a throwaway Postgres 16 (219 passed, ollama skipped) and migration 0002 on Postgres with duplicate rows (oldest kept, NULLs untouched, down/up clean).
 - No new deps.
 - Next: Q7 (SQLite returns naive datetimes, so API timestamps lose their `Z` once read back from the DB).
+
+## 2026-10-30 20:10 UTC — Q7 (post-backlog bug pass)
+- Status: green
+- Done: **Q7** SQLite (the default `DATABASE_URL` for local dev) has no time zone type, so every timestamp *read back* from the DB was naive and the API emitted `created_at` without `Z`, while freshly created rows had it: the same note serialized differently on first merge vs. repeat (found while writing Q6's tests), and a browser parses a naive ISO string as local time. Also, an aware non-UTC value was stored as its wall-clock text on SQLite, so ordering could follow wall clock instead of real time. New `UTCDateTime` type decorator (`app/db/models.py`) over `DateTime(timezone=True)`: normalizes to UTC on write, tags naive values as UTC on read. Same underlying column type, so no migration (the drift test still passes). 7 new tests in `test_utc_timestamps.py` (all API timestamps read from the DB are UTC; repeat merge JSON identical; `done` event timestamp equals the reloaded path's; round-trip of a +02:00 value is the same instant in UTC; tree order follows the instant, not wall clock — the last two on SQLite and Postgres). All 5 SQLite tests failed before the fix.
+- Decisions: fix at the type level rather than in the Pydantic schemas, so every ORM read (services, ordering, budget) sees aware UTC, not just the JSON. Postgres already behaved; verified the suite on a throwaway Postgres 16 (226 passed, ollama skipped).
+- No new deps.
+- Next: backlog complete. Suggested backlog items: basic styling (S3 finding), and re-merge of a grown branch replacing the earlier note (Q6 decision).
