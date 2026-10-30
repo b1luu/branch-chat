@@ -194,3 +194,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (201 passed, 11 skipped), frontend lint + 118 tests + build.
 - No new deps.
 - Next: backlog complete. Still suggest a styling backlog item (S3 finding: no CSS) so the README can get a real screenshot.
+
+## 2026-10-30 17:55 UTC — Q5 (post-backlog bug pass)
+- Status: green
+- Done: **Q5** `stream_reply`: when the provider finished without error but produced no text (nothing, `""`, or only whitespace — e.g. a local model hitting a stop token immediately), a blank assistant node was persisted and `done` sent. That left a dead empty bubble, blocked S4's retry-reuse (the user turn was no longer childless), and, worse, with `LLM_PROVIDER=anthropic` every later reply on that branch would 400, since the Messages API rejects empty assistant content. Now a blank answer is an `error` event ("LLM returned an empty reply"), nothing is persisted, and re-sending reuses the user turn. 4 new tests in `test_hardening.py` (no chunks / one empty chunk / whitespace chunks → `error`, no assistant row, user turn kept; retry after an empty reply reuses the turn and gets a real answer); all failed before the fix.
+- Decisions: reject at the source (don't persist) rather than having the Anthropic provider skip empty turns, so the tree never contains a node the UI can't show. The existing ChatView error path ("Try again", draft kept) handles the new event with no frontend change.
+- Noted, not changed: merging the same leaf twice (or a double-submit) stores two identical notes, both injected into descendants' context. Making merge idempotent per `source_leaf_id` is a design call (what should re-merging a branch that grew do?) — suggest a backlog item.
+- Checks: backend ruff + pytest (205 passed, 11 skipped), frontend lint + 118 tests + build.
+- No new deps.
+- Next: backlog complete. Suggested backlog items: basic styling (S3 finding) and idempotent merge-back.

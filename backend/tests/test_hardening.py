@@ -172,3 +172,62 @@ def test_orphan_is_only_reused_under_the_same_parent(engine: Engine, db: Session
         other = new_conversation(c)
         elsewhere = reply(c, other["root_message_id"], "hi")
     assert elsewhere[0][1]["id"] != failed[0][1]["id"]
+
+
+# --- empty model output (Q5) ---------------------------------------------------
+
+
+class EmptyThenMockProvider(LLMProvider):
+    """Returns nothing (or only whitespace) for the first `empties` calls, then MockProvider."""
+
+    name = "empty"
+
+    def __init__(self, empties: int = 1, chunks: tuple[str, ...] = ()) -> None:
+        self.empties = empties
+        self.chunks = chunks
+
+    async def stream(
+        self, messages: list[ChatMessage], max_tokens: int = DEFAULT_MAX_TOKENS
+    ) -> AsyncIterator[str]:
+        if self.empties > 0:
+            self.empties -= 1
+            for c in self.chunks:
+                yield c
+            return
+        async for chunk in MockProvider().stream(messages, max_tokens):
+            yield chunk
+
+
+def assistant_turns(db: Session) -> list[Message]:
+    db.expire_all()
+    return list(db.scalars(select(Message).where(Message.role == Role.assistant)).all())
+
+
+@pytest.mark.parametrize("chunks", [(), ("",), (" ", "\n\n", "\t")])
+def test_empty_model_reply_is_an_error_and_not_persisted(
+    engine: Engine, db: Session, chunks: tuple[str, ...]
+) -> None:
+    """A blank assistant node would be a dead bubble in the UI and makes Anthropic
+    reject every later turn on that branch (it requires non-empty content)."""
+    provider = EmptyThenMockProvider(empties=1, chunks=chunks)
+    with TestClient(create_app(make_session_factory(engine), provider)) as c:
+        conv = new_conversation(c)
+        events = reply(c, conv["root_message_id"], "hi")
+    kinds = [k for k, _ in events]
+    assert kinds[0] == "user" and kinds[-1] == "error"
+    assert "done" not in kinds
+    assert "empty" in events[-1][1]["detail"]
+    assert assistant_turns(db) == []
+    assert db.get(Message, events[0][1]["id"]) is not None  # kept for retry
+
+
+def test_retry_after_empty_reply_reuses_the_user_turn(engine: Engine, db: Session) -> None:
+    with TestClient(create_app(make_session_factory(engine), EmptyThenMockProvider())) as c:
+        conv = new_conversation(c)
+        first = reply(c, conv["root_message_id"], "hi")
+        second = reply(c, conv["root_message_id"], "hi")
+    assert second[-1][0] == "done"
+    assert second[0][1]["id"] == first[0][1]["id"]
+    assert len(user_turns(db)) == 1
+    [answer] = assistant_turns(db)
+    assert answer.content.strip()

@@ -115,7 +115,8 @@ async def stream_reply(
 
     Uses its own DB session because the response body runs after the request
     handler returns. The assistant node is written only once the stream
-    completes, so a failed or abandoned generation leaves no half-written reply.
+    completes, so a failed or abandoned generation leaves no half-written reply;
+    an empty (or whitespace-only) answer is reported as `error` too.
     If the path is over `context_budget` (D2), old ancestors are condensed into
     one summary message first; nothing about that is persisted to the tree.
     """
@@ -133,11 +134,20 @@ async def stream_reply(
             logger.exception("LLM provider %s failed", provider.name)
             yield sse("error", {"detail": f"LLM provider error: {exc}"})
             return
+        content = "".join(chunks)
+        if not content.strip():
+            # Treat a blank answer like a failure: a blank assistant node would be a
+            # dead bubble, and Anthropic rejects any later prompt containing an
+            # empty assistant turn, poisoning the whole branch. Keeping the user
+            # turn childless lets a retry reuse it (see create_user_node).
+            logger.warning("LLM provider %s returned an empty reply", provider.name)
+            yield sse("error", {"detail": "LLM returned an empty reply"})
+            return
         assistant = Message(
             conversation_id=user_msg.conversation_id,
             parent_id=user_msg.id,
             role=Role.assistant,
-            content="".join(chunks),
+            content=content,
         )
         db.add(assistant)
         db.commit()
