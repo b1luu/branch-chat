@@ -171,3 +171,9 @@ def notes_for(db: Session, message_ids: Sequence[str]) -> dict[str, list[Note]]:
     for n in notes:
         by_message.setdefault(n.message_id, []).append(n)
     return by_message
+
+
+def note_for_leaf(db: Session, leaf_id: str) -> Note | None:
+    """The merge note already made from `leaf_id`, if any (unique per leaf)."""
+    return db.scalars(select(Note).where(Note.source_leaf_id == leaf_id)).first()
+

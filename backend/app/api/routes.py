@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -84,16 +84,20 @@ def get_message_path(message_id: str, db: DB) -> list[PathMessageOut]:
 
 
 @router.post("/branches/{leaf_id}/merge", status_code=status.HTTP_201_CREATED)
-async def merge_branch(leaf_id: str, db: DB, llm: LLM) -> NoteOut:
+async def merge_branch(leaf_id: str, db: DB, llm: LLM, response: Response) -> NoteOut:
     """Summarize the side branch ending at `leaf_id` into a note on its fork origin.
 
-    Not streamed: the note is short and only useful once complete. 404 for an
-    unknown leaf, 409 if the leaf is on the main thread, 502 if the LLM fails.
+    Not streamed: the note is short and only useful once complete. 201 with the
+    new note, or 200 with the existing one if this leaf was already merged
+    (idempotent, no LLM call). 404 for an unknown leaf, 409 if the leaf is on
+    the main thread, 502 if the LLM fails.
     """
     try:
-        note = await merge.merge_branch(db, llm, leaf_id, merge.merge_max_tokens())
+        note, created = await merge.merge_branch(db, llm, leaf_id, merge.merge_max_tokens())
     except merge.MergeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    if not created:
+        response.status_code = status.HTTP_200_OK
     return NoteOut.model_validate(note)
 
 

@@ -35,7 +35,7 @@ Branch Chat lets you branch a side question off any message, explore it with the
 - `GET /api/conversations/{id}/tree` → all nodes (id, parent_id, role, preview) for the sidebar
 - `GET /api/messages/{id}/path` → root→node messages
 - `POST /api/messages/{id}/reply` body `{content, quote?}` → creates user child of `{id}`, streams assistant child via SSE, persists it when done
-- `POST /api/branches/{leaf_id}/merge` → summarizes branch from its fork point to `leaf_id`, stores note on the fork-origin message
+- `POST /api/branches/{leaf_id}/merge` → summarizes branch from its fork point to `leaf_id`, stores note on the fork-origin message; idempotent per leaf (a repeat returns the existing note with 200)
 - `GET /healthz`
 
 ## Testing tiers

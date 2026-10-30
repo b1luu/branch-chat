@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -69,9 +69,15 @@ class Message(Base):
 
 
 class Note(Base):
-    """Merge-back summary of a side branch, attached to the branch's fork-origin message."""
+    """Merge-back summary of a side branch, attached to the branch's fork-origin message.
+
+    At most one note per source leaf (unique index): messages are immutable, so
+    merging the same leaf twice would summarize the exact same turns. The index
+    also makes a double-submitted merge race-safe (see services/merge.py).
+    """
 
     __tablename__ = "notes"
+    __table_args__ = (Index("uq_notes_source_leaf_id", "source_leaf_id", unique=True),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_id)
     message_id: Mapped[str] = mapped_column(

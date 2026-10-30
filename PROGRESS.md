@@ -203,3 +203,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (205 passed, 11 skipped), frontend lint + 118 tests + build.
 - No new deps.
 - Next: backlog complete. Suggested backlog items: basic styling (S3 finding) and idempotent merge-back.
+
+## 2026-10-30 19:55 UTC — Q6 (post-backlog bug pass)
+- Status: green
+- Done: **Q6** merge back is idempotent per leaf (the duplicate-note issue flagged in Q5). Merging a leaf that already has a note returns that note with `200` and no LLM call (was: a second identical note, both injected into every descendant's context, and a second paid summary). New unique index `uq_notes_source_leaf_id` (migration **0002**, which first deletes existing exact duplicates keeping the oldest) closes the double-submit race: if a concurrent merge of the same leaf commits while ours is summarizing, our insert hits `IntegrityError`, we roll back and return the winner's note. NULL `source_leaf_id` (leaf deleted) stays unlimited. 8 new tests in `test_merge_idempotent.py` (repeat → 200 same note + one LLM call; one note in path and in the next reply's prompt; distinct leaves still get their own notes; retry after a 502 creates; simulated race returns the winner; DB rejects a duplicate; NULL leaf ids allowed; migration dedupes keeping the oldest, adds the unique index, downgrades). 4 failed before the fix (the others pin unchanged behavior).
+- Decisions: deliberately **not** changing what re-merging a *grown* branch does (deeper leaf → second note next to the first): `test_path_includes_notes_on_their_message` pins that D1 behavior, and replacing the shallower note is a product call. Suggest a backlog item: "re-merge of a grown branch replaces the earlier note from the same branch". Idempotency lives in the service + DB, so the frontend needed no change (`request()` accepts any 2xx). README/SPEC note the 200.
+- Verified: full backend suite also on a throwaway Postgres 16 (219 passed, ollama skipped) and migration 0002 on Postgres with duplicate rows (oldest kept, NULLs untouched, down/up clean).
+- No new deps.
+- Next: Q7 (SQLite returns naive datetimes, so API timestamps lose their `Z` once read back from the DB).
