@@ -44,6 +44,18 @@ function pathThrough(path: Message[], id: string): Message[] {
   return i === -1 ? path : path.slice(0, i + 1);
 }
 
+/**
+ * Where a normal (non-quote) send goes. Usually the leaf, but a user turn
+ * can't have a user turn under it (the backend answers 409), so with a
+ * question selected as the leaf (e.g. clicked in the tree) the new question is
+ * asked *in its place*: a sibling under the same parent. Re-sending a failed
+ * question's exact text that way reuses it on the server instead of branching.
+ */
+function replyParent(path: Message[] | null, leafId: string): string {
+  const leaf = path?.at(-1);
+  return leaf?.id === leafId && leaf.role === "user" && leaf.parent_id ? leaf.parent_id : leafId;
+}
+
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /**
@@ -107,6 +119,7 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
 
   const streaming = pending !== null;
   const tooLong = draft.length > MAX_CONTENT_CHARS;
+  const replacesQuestion = !quote && replyParent(path, leafId) !== leafId;
 
   async function send() {
     const content = draft.trim();
@@ -117,7 +130,7 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
     activeSend.current = sendId;
     const attached = () => activeSend.current === sendId;
     // A quote branch hangs under the quoted message, not the current leaf.
-    const parentId = quote?.messageId ?? leafId;
+    const parentId = quote?.messageId ?? replyParent(path, leafId);
     const quoteText = quote?.text ?? null;
     setDraft("");
     setSendError(null);
@@ -238,6 +251,11 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
             </button>
           </div>
         )}
+        {replacesQuestion && (
+          <p id="composer-hint" className="composer-hint">
+            A question is selected: sending asks a new question in its place, as a new branch.
+          </p>
+        )}
         <textarea
           ref={inputRef}
           aria-label="Message"
@@ -247,7 +265,11 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
           placeholder={quote ? "Ask about the quoted text…" : "Ask anything…"}
           rows={3}
           aria-invalid={tooLong || undefined}
-          aria-describedby={draft.length >= COUNTER_FROM ? "composer-count" : undefined}
+          aria-describedby={
+            [replacesQuestion && "composer-hint", draft.length >= COUNTER_FROM && "composer-count"]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
         />
         {draft.length >= COUNTER_FROM && (
           <p id="composer-count" className={`char-count${tooLong ? " over" : ""}`} aria-live="polite">

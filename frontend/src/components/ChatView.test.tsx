@@ -450,3 +450,75 @@ describe("ChatView — navigating away mid-stream", () => {
     expect(onReplyPersisted).not.toHaveBeenCalled();
   });
 });
+
+describe("ChatView with a question as the active leaf (Q8)", () => {
+  const u2b = msg({ id: "u2b", parent_id: "a1", content: "Recursive, really?" });
+  const a2b = msg({ id: "a2b", parent_id: "u2b", role: "assistant", content: "Really." });
+
+  it("sends in place of the selected question: under its parent, not under it", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse([root, u1, a1, u2]),
+      sseResponse([sseEvent("user", u2b), sseEvent("token", { text: "Really." }), sseEvent("done", a2b)]),
+    );
+    const onLeafChange = vi.fn();
+    const ui = userEvent.setup();
+    render(<ChatView leafId="u2" onLeafChange={onLeafChange} />);
+    await screen.findByText("Recursive?");
+    const hint = screen.getByText(/sending asks a new question in its place/);
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveAttribute(
+      "aria-describedby",
+      hint.id,
+    );
+
+    await ui.type(screen.getByRole("textbox", { name: "Message" }), "Recursive, really?{Enter}");
+
+    await waitFor(() => expect(onLeafChange).toHaveBeenCalledWith("a2b"));
+    expect(fetchCall(fetchMock, 1)[0]).toBe("/api/messages/a1/reply");
+    // The replaced question is no longer on the shown path.
+    expect(messages().map((li) => li.textContent)).toEqual([
+      "What is a CTE?",
+      "A common table expression.",
+      "Recursive, really?",
+      "Really.",
+    ]);
+    expect(screen.queryByText(/sending asks a new question/)).not.toBeInTheDocument();
+  });
+
+  it("hides the selected question while the replacement streams", async () => {
+    const stream = controlledSSE();
+    mockFetch(jsonResponse([root, u1, a1, u2]), stream.response);
+    const ui = userEvent.setup();
+    render(<ChatView leafId="u2" onLeafChange={vi.fn()} />);
+    await screen.findByText("Recursive?");
+    await ui.type(screen.getByRole("textbox", { name: "Message" }), "Other question{Enter}");
+
+    await screen.findByText("Other question");
+    expect(screen.queryByText("Recursive?")).not.toBeInTheDocument();
+    stream.close();
+  });
+
+  it("a quote still branches from the quoted message", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse([root, u1, a1, u2]),
+      sseResponse([sseEvent("user", { ...u2b, quote: "common" }), sseEvent("done", a2b)]),
+    );
+    const ui = userEvent.setup();
+    render(<ChatView leafId="u2" onLeafChange={vi.fn()} />);
+    const answer = await screen.findByText("A common table expression.");
+    selectText(answer, "common");
+    fireEvent.mouseUp(answer);
+    await ui.click(await screen.findByRole("button", { name: "Ask about this" }));
+    expect(screen.queryByText(/sending asks a new question/)).not.toBeInTheDocument();
+    await ui.type(screen.getByRole("textbox", { name: "Message" }), "Why common?{Enter}");
+    await screen.findByText("Really.");
+    expect(fetchCall(fetchMock, 1)[0]).toBe("/api/messages/a1/reply");
+  });
+
+  it("shows no hint and replies under the leaf when it's an assistant message", async () => {
+    mockFetch(jsonResponse([root, u1, a1]));
+    render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+    expect(screen.queryByText(/sending asks a new question/)).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message" })).not.toHaveAttribute("aria-describedby");
+  });
+});

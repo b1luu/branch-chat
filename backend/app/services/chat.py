@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import MessageOut
 from app.db import repository
+from app.db.errors import ConflictError
 from app.db.models import Message, Note, Role
 from app.llm import DEFAULT_MAX_TOKENS, ChatMessage, LLMProvider
 from app.services import budget
@@ -86,8 +87,18 @@ def create_user_node(db: Session, parent_id: str, content: str, quote: str | Non
     with no assistant child. Re-sending the same text under the same parent
     reuses that orphan instead of adding an identical sibling, so a retry
     doesn't show up as a spurious side branch in the tree.
+
+    The parent must be an assistant or system message (409 otherwise): a user
+    turn under a user turn would break the user/assistant alternation every
+    path relies on (Anthropic's Messages API rejects it, and the question above
+    would never get its own answer). To ask something else in place of a
+    question, reply to that question's parent instead (the UI does this).
     """
     parent = repository.get_message(db, parent_id)
+    if parent.role == Role.user:
+        raise ConflictError(
+            f"message {parent.id} is a user turn; reply to an assistant or system message"
+        )
     orphan = repository.childless_user_turn(db, parent.id, content, quote)
     if orphan is not None:
         return orphan

@@ -218,3 +218,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Decisions: fix at the type level rather than in the Pydantic schemas, so every ORM read (services, ordering, budget) sees aware UTC, not just the JSON. Postgres already behaved; verified the suite on a throwaway Postgres 16 (226 passed, ollama skipped).
 - No new deps.
 - Next: backlog complete. Suggested backlog items: basic styling (S3 finding), and re-merge of a grown branch replacing the earlier note (Q6 decision).
+
+## 2026-10-30 21:50 UTC — Q8 (post-backlog bug pass)
+- Status: green
+- Done: **Q8** clicking a question ("You:" node) in the tree makes it the active leaf, and sending from there created a user turn *under* a user turn: the prompt then had two user turns in a row and the selected question never got its own answer (an orphan from a failed reply could be built on the same way). **Backend**: `create_user_node` now rejects a user parent with `409` ("…is a user turn; reply to an assistant or system message"), nothing persisted. **Frontend**: with a question as the leaf, ChatView sends *in its place* (under the question's parent, a sibling branch) and shows a hint above the composer (`composer-hint`, linked via `aria-describedby`); re-sending a failed question's exact text that way hits S4's retry-reuse instead of branching. Quote branches are unchanged. 4 backend tests (`test_reply_parent_role.py`: 409 + nothing persisted, 409 for an unanswered orphan, sibling path alternates cleanly and excludes the replaced question, assistant/system parents still fine) + 4 frontend tests (ChatView: sends to the parent, replaced question hidden while streaming, quote still targets the quoted message, no hint on an assistant leaf). 2 + 2 failed before the fix.
+- Decisions: "ask in place of" over "answer this question" for a selected user leaf: it reuses the existing reply endpoint, and the retry case still works through orphan reuse. 409 (not 422) since the body is valid and it's the tree state that doesn't fit. SPEC endpoint line updated.
+- Checks: backend ruff + pytest (222 passed, 13 skipped), frontend lint + 122 tests + build.
+- No new deps.
+- Next: backlog complete. Suggested backlog items: basic styling (S3 finding), and re-merge of a grown branch replacing the earlier note (Q6 decision).
