@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createConversation, getTree, listConversations } from "./api/client.ts";
-import type { Conversation, TreeNode } from "./api/types.ts";
+import type { Conversation, Message, TreeNode } from "./api/types.ts";
 import BranchNav from "./components/BranchNav.tsx";
 import ChatView from "./components/ChatView.tsx";
 import ErrorNotice from "./components/ErrorNotice.tsx";
@@ -35,6 +35,17 @@ export default function App() {
   const [busy, setBusy] = useState<{ kind: "creating" } | { kind: "opening"; id: string } | null>(null);
   // Latest `/tree` the sidebar fetched, tagged with its conversation so a stale one is never used.
   const [tree, setTree] = useState<{ conversationId: string; nodes: TreeNode[] } | null>(null);
+  /**
+   * Counts replies persisted per conversation. A reply that finishes after the
+   * user switched branch or conversation never becomes the active leaf, so the
+   * sidebar wouldn't notice it; bumping this makes it refetch the tree. Keyed by
+   * conversation so a background reply in another conversation doesn't refetch
+   * the open one. (The callback may be a stale closure from when the send started,
+   * so it only uses the functional state update.)
+   */
+  const [replyCounts, setReplyCounts] = useState<Readonly<Record<string, number>>>({});
+  const onReplyPersisted = (m: Message) =>
+    setReplyCounts((c) => ({ ...c, [m.conversation_id]: (c[m.conversation_id] ?? 0) + 1 }));
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +150,7 @@ export default function App() {
               conversationId={activeConversation}
               activeLeaf={activeLeaf}
               onSelect={setActiveLeaf}
+              refreshKey={replyCounts[activeConversation] ?? 0}
               onTreeChange={(nodes) => setTree({ conversationId: activeConversation, nodes })}
             />
           </nav>
@@ -149,7 +161,7 @@ export default function App() {
           <BranchNav key={activeLeaf} nodes={tree.nodes} activeLeaf={activeLeaf} onSelect={setActiveLeaf} />
         )}
         {activeLeaf ? (
-          <ChatView leafId={activeLeaf} onLeafChange={setActiveLeaf} />
+          <ChatView leafId={activeLeaf} onLeafChange={setActiveLeaf} onReplyPersisted={onReplyPersisted} />
         ) : (
           <p>Pick a conversation or start a new one.</p>
         )}

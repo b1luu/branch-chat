@@ -110,6 +110,20 @@ describe("TreeSidebar", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("refetches when refreshKey changes, even if the active leaf is known", async () => {
+    // A background reply (detached from the chat view) added a node the user isn't on.
+    const fetchMock = mockFetch(tree(), tree([...nodes, node("u9", "a2", "user", "Background q"), node("a9", "u9", "assistant", "Background answer")]));
+    const { rerender } = render(<TreeSidebar conversationId="c1" activeLeaf="b1" onSelect={vi.fn()} refreshKey={0} />);
+    await screen.findByRole("tree");
+    rerender(<TreeSidebar conversationId="c1" activeLeaf="b1" onSelect={vi.fn()} refreshKey={0} />);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // same key: no fetch
+
+    rerender(<TreeSidebar conversationId="c1" activeLeaf="b1" onSelect={vi.fn()} refreshKey={1} />);
+    expect(await screen.findByText(/Background answer/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(item("Side answer")).toHaveAttribute("aria-selected", "true"); // still on the user's branch
+  });
+
   it("refetches when the conversation changes", async () => {
     const other = [node("r2", null, "system", "sys"), node("x1", "r2", "user", "Other chat")];
     mockFetch(tree(), jsonResponse({ conversation_id: "c2", nodes: other }));

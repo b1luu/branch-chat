@@ -10,6 +10,12 @@ interface TreeSidebarProps {
   onSelect: (id: string) => void;
   /** Called with the nodes each time the tree is (re)fetched, so siblings like the breadcrumb can share it. */
   onTreeChange?: (nodes: TreeNode[]) => void;
+  /**
+   * Bump to force a refetch even though the active leaf is already known, e.g.
+   * when a reply detached from the chat view (the user navigated away mid-stream)
+   * is persisted in the background and adds a node the user isn't looking at.
+   */
+  refreshKey?: number;
 }
 
 const ROLE_LABEL: Record<TreeNode["role"], string> = { user: "You", assistant: "AI", system: "System" };
@@ -18,18 +24,29 @@ const ROLE_LABEL: Record<TreeNode["role"], string> = { user: "You", assistant: "
  * Collapsible minimap of the conversation tree.
  *
  * Fetches `/tree` when the conversation changes, and again whenever the active
- * leaf is a node it hasn't seen (i.e. a reply just created it). Nodes on the
+ * leaf is a node it hasn't seen (i.e. a reply just created it) or `refreshKey`
+ * changes (a background reply landed). Nodes on the
  * active path are marked so the user can see which branch they're on.
  */
-export default function TreeSidebar({ conversationId, activeLeaf, onSelect, onTreeChange }: TreeSidebarProps) {
-  const [tree, setTree] = useState<{ conversationId: string; nodes: TreeNode[] } | null>(null);
+export default function TreeSidebar({
+  conversationId,
+  activeLeaf,
+  onSelect,
+  onTreeChange,
+  refreshKey = 0,
+}: TreeSidebarProps) {
+  // Tagged with the conversation and refreshKey it was fetched for, so a stale one triggers a refetch.
+  const [tree, setTree] = useState<{ conversationId: string; refreshKey: number; nodes: TreeNode[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // Bumped by "Try again" to re-run a failed fetch.
   const [attempt, setAttempt] = useState(0);
 
   const current = tree?.conversationId === conversationId ? tree : null;
-  const needsFetch = current === null || (activeLeaf !== null && !current.nodes.some((n) => n.id === activeLeaf));
+  const needsFetch =
+    current === null ||
+    current.refreshKey !== refreshKey ||
+    (activeLeaf !== null && !current.nodes.some((n) => n.id === activeLeaf));
 
   useEffect(() => {
     if (!needsFetch) return;
@@ -38,7 +55,7 @@ export default function TreeSidebar({ conversationId, activeLeaf, onSelect, onTr
       .then((t) => {
         if (cancelled) return;
         setError(null);
-        setTree({ conversationId, nodes: t.nodes });
+        setTree({ conversationId, refreshKey, nodes: t.nodes });
         onTreeChange?.(t.nodes);
       })
       .catch((err: unknown) => {
@@ -49,7 +66,7 @@ export default function TreeSidebar({ conversationId, activeLeaf, onSelect, onTr
     };
     // onTreeChange is a notification sink; a new callback identity shouldn't refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, activeLeaf, needsFetch, attempt]);
+  }, [conversationId, activeLeaf, needsFetch, attempt, refreshKey]);
 
   const nodes = current?.nodes;
   const rows = useMemo(() => (nodes ? flattenTree(nodes, collapsed) : []), [nodes, collapsed]);

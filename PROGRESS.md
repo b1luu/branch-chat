@@ -186,3 +186,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (201 passed, 11 skipped), frontend lint + 113 tests + build.
 - No new deps.
 - Next: backlog complete. Still suggest a styling backlog item (S3 finding: no CSS) so the README can get a real screenshot.
+
+## 2026-10-30 15:49 UTC — Q4 (post-backlog bug pass)
+- Status: green
+- Done: **Q4** closes the gap Q3 left: a reply that finishes after the user navigated away (detached send) never became the active leaf, so the sidebar tree (and the breadcrumb, which shares its nodes) didn't show it until some unrelated refetch. ChatView gains `onReplyPersisted(assistant)`, fired for every reply the server persisted, attached or detached (not for failures). App keeps a per-conversation reply counter and passes it to TreeSidebar as `refreshKey`; TreeSidebar refetches when the key differs from the one its tree was fetched with. 5 new tests: ChatView callback for detached + attached replies and none on failure, TreeSidebar refetch on key bump only (same key → no fetch, selection unchanged), App end-to-end (send on main thread → click a side branch → reply lands → tree shows it, user stays on the side branch, exactly one extra `/tree` fetch), and a guard that a background reply in conversation A doesn't refetch B's tree. The first 4 failed before the fix.
+- Decisions: counter keyed by `conversation_id` from the persisted message, so a stale closure from when the send started can still update it safely via the functional setState (no refs written during render). A counter rather than pushing the node into the tree locally: `/tree` stays the single source of truth and also picks up the user node.
+- Checks: backend ruff + pytest (201 passed, 11 skipped), frontend lint + 118 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggest a styling backlog item (S3 finding: no CSS) so the README can get a real screenshot.

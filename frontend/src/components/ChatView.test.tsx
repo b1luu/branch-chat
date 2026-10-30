@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { controlledSSE, fetchCall, jsonResponse, mockFetch, sseEvent, sseResponse } from "../test/fetch.ts";
 import { msg } from "../test/messages.ts";
 import { selectText } from "../test/select.ts";
+import type { Message } from "../api/types.ts";
 import ChatView from "./ChatView.tsx";
 
 afterEach(() => {
@@ -332,11 +333,11 @@ describe("ChatView — navigating away mid-stream", () => {
   const ub = msg({ id: "ub", parent_id: "root", content: "Other branch question" });
   const ab = msg({ id: "ab", parent_id: "ub", role: "assistant", content: "Other branch answer" });
 
-  async function startStreaming(onLeafChange: (id: string) => void) {
+  async function startStreaming(onLeafChange: (id: string) => void, onReplyPersisted?: (m: Message) => void) {
     const stream = controlledSSE();
     const fetchMock = mockFetch(jsonResponse([root, u1, a1]), stream.response, jsonResponse([root, ub, ab]));
     const ui = userEvent.setup();
-    const view = render(<ChatView leafId="a1" onLeafChange={onLeafChange} />);
+    const view = render(<ChatView leafId="a1" onLeafChange={onLeafChange} onReplyPersisted={onReplyPersisted} />);
     await screen.findByText("What is a CTE?");
     await ui.type(screen.getByRole("textbox", { name: "Message" }), "Recursive?{Enter}");
     stream.push(sseEvent("user", u2));
@@ -410,5 +411,42 @@ describe("ChatView — navigating away mid-stream", () => {
       "Follow-up",
       "Follow-up answer",
     ]);
+  });
+
+  // Q4: the tree sidebar learns about a reply that finished after the user navigated away.
+  it("reports a background reply as persisted even though it's detached", async () => {
+    const onLeafChange = vi.fn();
+    const onReplyPersisted = vi.fn();
+    const { stream, view } = await startStreaming(onLeafChange, onReplyPersisted);
+
+    view.rerender(<ChatView leafId="ab" onLeafChange={onLeafChange} onReplyPersisted={onReplyPersisted} />);
+    await screen.findByText("Other branch answer");
+    expect(onReplyPersisted).not.toHaveBeenCalled();
+    stream.push(sseEvent("done", a2));
+    stream.close();
+
+    await waitFor(() => expect(onReplyPersisted).toHaveBeenCalledWith(a2));
+    expect(onReplyPersisted).toHaveBeenCalledTimes(1);
+    expect(onLeafChange).not.toHaveBeenCalled(); // still detached: the view isn't hijacked
+  });
+
+  it("reports an attached reply as persisted too, and a failed one not at all", async () => {
+    const onLeafChange = vi.fn();
+    const onReplyPersisted = vi.fn();
+    const { stream, fetchMock } = await startStreaming(onLeafChange, onReplyPersisted);
+    stream.push(sseEvent("done", a2));
+    stream.close();
+    await waitFor(() => expect(onLeafChange).toHaveBeenCalledWith("a2"));
+    expect(onReplyPersisted).toHaveBeenCalledExactlyOnceWith(a2);
+
+    onReplyPersisted.mockClear();
+    const failing = controlledSSE();
+    fetchMock.mockReset(); // drop startStreaming's unused queued path response
+    fetchMock.mockResolvedValueOnce(failing.response);
+    await userEvent.setup().type(screen.getByRole("textbox", { name: "Message" }), "Again{Enter}");
+    failing.push(sseEvent("error", { detail: "model crashed" }));
+    failing.close();
+    expect(await screen.findByRole("alert")).toHaveTextContent("model crashed");
+    expect(onReplyPersisted).not.toHaveBeenCalled();
   });
 });

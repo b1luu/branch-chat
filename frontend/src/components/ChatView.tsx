@@ -9,6 +9,12 @@ interface ChatViewProps {
   leafId: string;
   /** Called with the new assistant message id once a reply finishes. */
   onLeafChange: (id: string) => void;
+  /**
+   * Called with every assistant reply the server persisted, including one that
+   * finished after the user navigated away (a detached send, see `activeSend`).
+   * Lets the tree sidebar pick up nodes this view no longer shows.
+   */
+  onReplyPersisted?: (assistant: Message) => void;
 }
 
 /** A user turn sent but not yet confirmed by the server's `user` event. */
@@ -48,7 +54,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
  * active leaf to the new assistant message. The path is only re-fetched when
  * `leafId` changes to something we didn't just create ourselves.
  */
-export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
+export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: ChatViewProps) {
   const [path, setPath] = useState<Message[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -134,6 +140,7 @@ export default function ChatView({ leafId, onLeafChange }: ChatViewProps) {
         },
         controller.signal,
       );
+      onReplyPersisted?.(assistant);
       if (!attached()) return;
       const confirmedUser: Message | null = userNode;
       // Branching from an earlier message drops the turns below it from view.
