@@ -226,3 +226,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (222 passed, 13 skipped), frontend lint + 122 tests + build.
 - No new deps.
 - Next: backlog complete. Suggested backlog items: basic styling (S3 finding), and re-merge of a grown branch replacing the earlier note (Q6 decision).
+
+## 2026-10-31 UTC — Q9 (post-backlog bug pass)
+- Status: green
+- Done: **Q9** frontend `childrenIndex` sorted siblings with `created_at.localeCompare`, but the API drops the fraction when it is exactly zero (`…:42Z`) and sends 6 digits otherwise (`…:42.500000Z`); since `"."` < `"Z"`, a child created at `42.5` sorted *before* one created at `42.0`. The oldest child decides which branch is the main thread, so the sidebar indentation, breadcrumb, "Back to main thread" target (`branchTip`) could disagree with the backend (`side_branch_start`, `ORDER BY created_at, id`), e.g. "Merge back" offered on what the server considers the main thread (409). New `compareCreated` in `tree.ts` compares whole-second instants, then the fraction padded to fixed width (keeps microseconds, which `Date.parse` would round to ms), then id, matching the server's order. 5 new tests in `tree.test.ts` (whole-second vs fractional, microsecond precision, offsets compared as instants, id tiebreak, branchSegments/branchTip pick the right main thread); the ordering ones failed before the fix.
+- Decisions: fixed the comparison on the client rather than forcing a fixed-width timestamp format in every API schema: the client shouldn't depend on string formatting of timestamps, and it keeps the API output unchanged. Hit rate is low (the fraction must be exactly 0 µs) but the effect is a wrong main thread, so worth closing.
+- Checks: backend ruff + pytest (222 passed, 13 skipped), frontend lint + 127 tests + build.
+- No new deps.
+- Next: backlog complete. Suggested backlog items still open: basic styling (S3 finding), and re-merge of a grown branch replacing the earlier note (Q6 decision).

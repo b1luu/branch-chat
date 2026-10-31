@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "./api/types.ts";
-import { branchSegments, branchTip, childrenIndex, flattenTree, pathIds } from "./tree.ts";
+import { branchSegments, branchTip, childrenIndex, compareCreated, flattenTree, pathIds } from "./tree.ts";
 
 let t = 0;
 function node(id: string, parent_id: string | null, role: TreeNode["role"] = "user"): TreeNode {
@@ -111,5 +111,51 @@ describe("branchTip", () => {
     const chain: TreeNode[] = [node("n0", null)];
     for (let i = 1; i < 20_000; i++) chain.push(node(`n${i}`, `n${i - 1}`));
     expect(branchTip(chain, "n0")).toBe("n19999");
+  });
+});
+
+describe("created_at ordering (matches the server's ORDER BY created_at, id)", () => {
+  const at = (id: string, parent_id: string | null, created_at: string): TreeNode => ({
+    id,
+    parent_id,
+    role: "user",
+    preview: id,
+    created_at,
+  });
+
+  it("orders a whole-second timestamp (no fraction) before a later fractional one", () => {
+    // The API drops the fraction when it is exactly zero; as strings "42.5Z" < "42Z".
+    const kids = [at("later", "p", "2026-01-01T00:00:42.500000Z"), at("first", "p", "2026-01-01T00:00:42Z")];
+    expect(childrenIndex(kids).get("p")?.map((n) => n.id)).toEqual(["first", "later"]);
+  });
+
+  it("keeps microsecond precision that Date.parse would round away", () => {
+    const kids = [at("b", "p", "2026-01-01T00:00:42.123457Z"), at("a", "p", "2026-01-01T00:00:42.123456Z")];
+    expect(childrenIndex(kids).get("p")?.map((n) => n.id)).toEqual(["a", "b"]);
+  });
+
+  it("compares instants, not wall-clock text, across offsets", () => {
+    const utc = at("utc", "p", "2026-01-01T00:30:00Z");
+    const plusTwo = at("plus2", "p", "2026-01-01T02:00:00+02:00"); // 00:00Z, earlier
+    expect(compareCreated(plusTwo, utc)).toBeLessThan(0);
+    expect(compareCreated(utc, plusTwo)).toBeGreaterThan(0);
+  });
+
+  it("breaks exact ties by id, like the server", () => {
+    const ts = "2026-01-01T00:00:42.100000Z";
+    const kids = [at("bb", "p", ts), at("aa", "p", ts)];
+    expect(childrenIndex(kids).get("p")?.map((n) => n.id)).toEqual(["aa", "bb"]);
+    expect(compareCreated(at("aa", "p", ts), at("aa", "p", ts))).toBe(0);
+  });
+
+  it("picks the right main thread when the oldest child landed on a whole second", () => {
+    const nodes = [
+      at("root", null, "2026-01-01T00:00:40.250000Z"),
+      at("side", "root", "2026-01-01T00:00:42.900000Z"),
+      at("main", "root", "2026-01-01T00:00:42Z"),
+    ];
+    expect(branchSegments(nodes, "main").map((s) => s.start.id)).toEqual(["root"]);
+    expect(branchSegments(nodes, "side").map((s) => s.start.id)).toEqual(["root", "side"]);
+    expect(branchTip(nodes, "root")).toBe("main");
   });
 });

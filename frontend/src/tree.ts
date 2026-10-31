@@ -5,6 +5,36 @@
  */
 import type { TreeNode } from "./api/types.ts";
 
+const INSTANT = /^(.*?)(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/i;
+
+/**
+ * Split an ISO timestamp into whole-second epoch ms and a fixed-width fraction.
+ *
+ * Why not compare the strings: the API omits the fraction when it is exactly
+ * zero (`…:42Z`) and sends 6 digits otherwise (`…:42.500000Z`), and `"."` sorts
+ * before `"Z"`, so `…:42.5Z` would come *before* `…:42Z`. `Date.parse` alone
+ * keeps only milliseconds, while the server orders by microseconds.
+ */
+function instantKey(iso: string): [number, string] {
+  const m = INSTANT.exec(iso);
+  const base = m?.[1] ?? iso;
+  const fraction = (m?.[2] ?? "").padEnd(9, "0").slice(0, 9);
+  const seconds = Date.parse(`${base}${m?.[3] ?? ""}`);
+  return [Number.isNaN(seconds) ? 0 : seconds, fraction];
+}
+
+/**
+ * Oldest-first order matching the server's `ORDER BY created_at, id`, which is
+ * what decides the "oldest child" (main branch) on the backend, e.g. for merge.
+ */
+export function compareCreated(a: TreeNode, b: TreeNode): number {
+  const [sa, fa] = instantKey(a.created_at);
+  const [sb, fb] = instantKey(b.created_at);
+  if (sa !== sb) return sa - sb;
+  if (fa !== fb) return fa < fb ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /** Children of each node id (`null` = roots), oldest first. */
 export function childrenIndex(nodes: readonly TreeNode[]): Map<string | null, TreeNode[]> {
   const index = new Map<string | null, TreeNode[]>();
@@ -13,7 +43,7 @@ export function childrenIndex(nodes: readonly TreeNode[]): Map<string | null, Tr
     if (list) list.push(n);
     else index.set(n.parent_id, [n]);
   }
-  for (const list of index.values()) list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  for (const list of index.values()) list.sort(compareCreated);
   return index;
 }
 
