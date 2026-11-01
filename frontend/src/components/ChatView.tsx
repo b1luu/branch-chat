@@ -3,6 +3,7 @@ import { selectionInMessage } from "../selection.ts";
 import { getPath, streamReply } from "../api/client.ts";
 import type { Message, Note } from "../api/types.ts";
 import ErrorNotice from "./ErrorNotice.tsx";
+import Markdown from "./Markdown.tsx";
 
 interface ChatViewProps {
   /** The active leaf: the chat shows the root→leaf path and replies go under it. */
@@ -306,7 +307,14 @@ function MessageBubble({ id, role, content, quote, notes, streaming = false, onA
       aria-busy={streaming || undefined}
     >
       {quote && <blockquote className="quote">{quote}</blockquote>}
-      <div className="content">{content || (streaming ? "…" : "")}</div>
+      {role === "user" ? (
+        // User turns are shown as typed: plain text, line breaks kept.
+        <div className="content plain" style={{ whiteSpace: "pre-wrap" }}>
+          {content}
+        </div>
+      ) : (
+        <div className="content markdown">{content ? <Markdown text={content} /> : streaming ? "…" : ""}</div>
+      )}
       {onAsk && (
         // preventDefault on mousedown keeps the highlight while the click lands.
         <button type="button" className="ask" onMouseDown={(e) => e.preventDefault()} onClick={onAsk}>
@@ -317,7 +325,9 @@ function MessageBubble({ id, role, content, quote, notes, streaming = false, onA
         // Outside `.content`, so highlighting a note never offers "Ask about this".
         <aside key={n.id} className="note" aria-label="Merged note">
           <span className="note-label">Merged from a side branch</span>
-          <p>{n.content}</p>
+          <div className="note-body markdown">
+            <Markdown text={n.content} />
+          </div>
         </aside>
       ))}
     </li>

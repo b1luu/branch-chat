@@ -242,3 +242,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (224 passed, 13 skipped), frontend lint + 127 tests + build.
 - No new deps.
 - Next: backlog complete. Suggested: basic styling, re-merge replacing the earlier note, and a backend lock file (pip resolves `>=` ranges to newer versions on each machine).
+
+## 2026-11-01 23:58 UTC — U1
+- Status: green
+- Done: **U1** assistant replies and merge notes render as Markdown via new `components/Markdown.tsx` (`react-markdown` + `remark-gfm`): headings, emphasis, lists, inline code, fenced code (`Markdown.css`: monospace, `white-space: pre`, horizontal scroll). User turns stay plain text with `white-space: pre-wrap` (`.content.plain`). Links open in a new tab with `rel="noopener noreferrer"`. 7 new tests in `Markdown.test.tsx`: elements render (whitespace kept in code), `<script>`/`<img onerror>` stay inert text, link attrs + `javascript:` URL dropped, notes render Markdown, user newlines kept and `**` not parsed, partial fence mid-stream then the closed block, selection across `<strong>`/`<code>` quotes the visible text and is sent as the quote.
+- Decisions: no `rehype-raw`, so raw HTML is never parsed into elements (react-markdown shows it as text) and no `dangerouslySetInnerHTML` anywhere; default `urlTransform` strips unsafe URL schemes. The whole partial text is re-parsed on each token: simple, fine at chat sizes, and Markdown has no error state, so an unclosed fence just renders as an open code block. Selection code needed no change: `.content` still wraps the rendered tree and `Selection.toString()` yields the visible text. Notes keep their own wrapper (`.note-body`) outside `.content`, so they still never offer "Ask about this".
+- Checks: backend ruff + pytest (224 passed, 13 skipped), frontend lint + 134 tests + build.
+- New deps: `react-markdown` ^10.1, `remark-gfm` ^4.0 (bundle 405 kB / 126 kB gzip).
+- Next: U2 (basic styling + real screenshot).

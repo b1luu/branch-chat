@@ -1,0 +1,17 @@
+/* Minimal rules U1 needs to be readable; full styling lives in the U2 stylesheet. */
+.markdown pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+.markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.content.plain {
+  white-space: pre-wrap;
+}
