@@ -164,3 +164,61 @@ def test_path_missing_message_404(client: TestClient) -> None:
     response = client.get("/api/messages/nope/path")
     assert response.status_code == 404
     assert response.json() == {"detail": "message nope not found"}
+
+
+def test_tree_parents_first_when_timestamps_tie(client: TestClient, db: Session) -> None:
+    """Windows' clock can give a parent and child the same `created_at` (~15 ms ticks).
+
+    Ids are random, so the `ORDER BY created_at, id` tiebreak alone could put a
+    reply before its parent. Pin every timestamp to one instant and use ids that
+    sort in reverse of the tree, the worst case for that tiebreak.
+    """
+    conv = _create(client)
+    root = db.get(Message, conv["root_message_id"])
+    assert root is not None
+    tie = root.created_at
+    chain = []
+    parent_id = root.id
+    for i, (role, mid) in enumerate([(Role.user, "f3"), (Role.assistant, "f2"), (Role.user, "f1")]):
+        m = Message(
+            id=mid,
+            conversation_id=conv["id"],
+            parent_id=parent_id,
+            role=role,
+            content=f"m{i}",
+            created_at=tie,
+        )
+        db.add(m)
+        db.commit()
+        chain.append(m)
+        parent_id = m.id
+    sibling = Message(
+        id="f0",
+        conversation_id=conv["id"],
+        parent_id=chain[1].id,
+        role=Role.user,
+        content="side",
+        created_at=tie,
+    )
+    db.add(sibling)
+    db.commit()
+
+    nodes = client.get(f"/api/conversations/{conv['id']}/tree").json()["nodes"]
+    ids = [n["id"] for n in nodes]
+    for n in nodes:
+        if n["parent_id"] is not None:
+            assert ids.index(n["parent_id"]) < ids.index(n["id"]), ids
+    # Siblings keep the time-then-id order (f0 before f1), as merge/main-thread logic expects.
+    assert ids.index("f0") < ids.index("f1")
+
+
+def test_parents_first_keeps_order_when_already_valid() -> None:
+    from app.db.repository import parents_first
+
+    def node(id_: str, parent: str | None) -> Message:
+        return Message(id=id_, parent_id=parent, conversation_id="c", role=Role.user, content="")
+
+    already = [node("r", None), node("a", "r"), node("b", "r"), node("c", "a")]
+    assert [m.id for m in parents_first(already)] == ["r", "a", "b", "c"]
+    scrambled = [node("c", "a"), node("b", "r"), node("r", None), node("a", "r"), node("d", "c")]
+    assert [m.id for m in parents_first(scrambled)] == ["r", "b", "a", "c", "d"]

@@ -234,3 +234,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (222 passed, 13 skipped), frontend lint + 127 tests + build.
 - No new deps.
 - Next: backlog complete. Suggested backlog items still open: basic styling (S3 finding), and re-merge of a grown branch replacing the earlier note (Q6 decision).
+
+## 2026-11-01 UTC — Q10 (bug found on Brandon's Windows PC)
+- Status: green
+- Done: **Q10** `test_tree_returns_all_branches_parents_first` failed on Brandon's Windows machine (first local run, Python 3.12): Windows' clock ticks in ~15 ms steps, so messages created back to back can share `created_at`, and the `ORDER BY created_at, id` tiebreak (random hex ids) put a reply before its parent, breaking `/tree`'s parents-first contract. `get_tree` now passes rows through new `repository.parents_first`: a stable O(n) topological pass that keeps time order but holds a node back until its parent is out. 2 new tests in `test_api_conversations.py` (all timestamps pinned to one instant with ids sorted against the tree; pure-function order check); both failed before the fix. Linux never reproduces the original failure (µs clock), hence the pinned-timestamp test.
+- Decisions: fixed in Python after the query rather than with a depth-ordered recursive CTE: same single query, keeps time order between unrelated branches, and sibling order (which decides the main thread for merge/breadcrumb, Q9) is untouched.
+- Checks: backend ruff + pytest (224 passed, 13 skipped), frontend lint + 127 tests + build.
+- No new deps.
+- Next: backlog complete. Suggested: basic styling, re-merge replacing the earlier note, and a backend lock file (pip resolves `>=` ranges to newer versions on each machine).

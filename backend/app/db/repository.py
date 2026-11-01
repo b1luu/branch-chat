@@ -91,10 +91,16 @@ def list_conversations(db: Session) -> list[tuple[Conversation, str | None]]:
 
 
 def get_tree(db: Session, conversation_id: str) -> list[Message]:
-    """Every message in a conversation, oldest first (parents before children).
+    """Every message in a conversation, oldest first, parents always before children.
 
     The client rebuilds the tree from `parent_id`; one flat indexed query is
     cheaper than nesting on the server.
+
+    `ORDER BY created_at` alone doesn't guarantee parents first: on a coarse
+    clock (Windows ticks in ~15 ms steps) a parent and its child can share a
+    timestamp, and the `id` tiebreak is random. So the rows are then passed
+    through `parents_first`, which keeps time order but holds back any node
+    until its parent has been emitted.
     """
     if db.get(Conversation, conversation_id) is None:
         raise NotFoundError("conversation", conversation_id)
@@ -103,7 +109,36 @@ def get_tree(db: Session, conversation_id: str) -> list[Message]:
         .where(Message.conversation_id == conversation_id)
         .order_by(Message.created_at, Message.id)
     )
-    return list(db.scalars(stmt).all())
+    return parents_first(db.scalars(stmt).all())
+
+
+def parents_first(messages: Sequence[Message]) -> list[Message]:
+    """Stable topological order: input order, except a child never precedes its parent.
+
+    Walks the input once; a node whose parent hasn't been emitted yet waits in
+    `waiting[parent_id]` and is emitted right after that parent (recursively).
+    O(n). Nodes whose parent isn't in the list (the root) count as ready.
+    """
+    present = {m.id for m in messages}
+    emitted: set[str] = set()
+    waiting: dict[str, list[Message]] = {}
+    out: list[Message] = []
+
+    def emit(m: Message) -> None:
+        stack = [m]
+        while stack:
+            node = stack.pop()
+            out.append(node)
+            emitted.add(node.id)
+            # Reversed so held-back children come out in their original order.
+            stack.extend(reversed(waiting.pop(node.id, [])))
+
+    for m in messages:
+        if m.parent_id is None or m.parent_id not in present or m.parent_id in emitted:
+            emit(m)
+        else:
+            waiting.setdefault(m.parent_id, []).append(m)
+    return out
 
 
 def childless_user_turn(
