@@ -42,8 +42,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/pyproject.toml
-      - run: pip install -e ".[dev]"
+          cache-dependency-path: backend/requirements-dev.lock
+      # Pinned versions (Q12): CI tests exactly what Docker and the local PC install.
+      - run: pip install -r requirements-dev.lock
+      - run: pip install --no-deps -e .
       - run: ruff check .
       - run: pytest -q
 

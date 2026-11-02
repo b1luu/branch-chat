@@ -8,9 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install dependencies first so code edits don't bust this layer.
-COPY pyproject.toml ./
-RUN mkdir app && touch app/__init__.py && pip install . && rm -rf app build *.egg-info
+# Install pinned deps first (requirements.lock, Q12) so code edits don't bust this layer;
+# then the project itself with --no-deps so pip can't resolve anything newer.
+COPY pyproject.toml requirements.lock ./
+RUN pip install -r requirements.lock \
+    && mkdir app && touch app/__init__.py && pip install --no-deps . && rm -rf app build *.egg-info
 
 COPY alembic.ini ./
 COPY alembic ./alembic

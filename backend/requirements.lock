@@ -1,0 +1,34 @@
+# Pinned backend deps (Q12). Generated from pyproject.toml; do not edit by hand.
+# Regenerate after changing pyproject.toml deps (needs uv: `pip install uv`):
+#   uv pip compile pyproject.toml --universal --python-version 3.12 --no-header --annotation-style line -o requirements.lock
+# --universal adds platform markers, so one file works on Linux, macOS and Windows.
+alembic==1.20.1           # via branch-chat-backend (pyproject.toml)
+annotated-doc==0.0.5      # via fastapi
+annotated-types==0.8.0    # via pydantic
+anyio==4.16.0             # via httpx, starlette, watchfiles
+certifi==2026.10.23       # via httpcore, httpx
+click==8.5.0              # via uvicorn
+fastapi==0.162.0          # via branch-chat-backend (pyproject.toml)
+h11==0.16.0               # via httpcore, uvicorn
+httpcore==1.0.9           # via httpx
+httptools==0.9.0          # via uvicorn
+httpx==0.28.1             # via branch-chat-backend (pyproject.toml)
+idna==3.20                # via anyio, httpx
+mako==1.4.3               # via alembic
+markupsafe==3.0.4         # via mako
+opentelemetry-api==1.45.2  # via fastapi
+psycopg==3.3.6            # via branch-chat-backend (pyproject.toml)
+psycopg-binary==3.3.6 ; implementation_name != 'pypy'  # via psycopg
+pydantic==2.14.2          # via fastapi, branch-chat-backend (pyproject.toml)
+pydantic-core==2.50.2     # via pydantic
+python-dotenv==1.2.4      # via uvicorn
+pyyaml==6.0.3             # via uvicorn
+sqlalchemy==2.1.6         # via alembic, branch-chat-backend (pyproject.toml)
+starlette==1.10.0         # via fastapi
+typing-extensions==4.16.0  # via alembic, anyio, fastapi, opentelemetry-api, psycopg, pydantic, pydantic-core, sqlalchemy, starlette, typing-inspection
+typing-inspection==0.4.4  # via fastapi, pydantic
+tzdata==2026.6 ; sys_platform == 'win32'  # via psycopg
+uvicorn==0.54.0           # via branch-chat-backend (pyproject.toml)
+uvloop==0.23.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'  # via uvicorn
+watchfiles==1.3.0         # via uvicorn
+websockets==17.4          # via uvicorn

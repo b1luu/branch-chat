@@ -4,8 +4,8 @@
     cd frontend && npm run build && cd ..
     python scripts/screenshot.py [--dark] [--out docs/screenshot.png]
 
-Needs the backend installed (`pip install -e backend[dev]`) and Playwright for
-Python with Chromium. Serves the built frontend and the API from one in-process
+Needs the backend installed (see README: `pip install -r requirements-dev.lock`
+in `backend/`) and Playwright for Python with Chromium. Serves the built frontend and the API from one in-process
 FastAPI app on a throwaway SQLite DB, with a scripted mock provider (canned
 Markdown replies, so the shot shows real formatting rather than mock echo text).
 It then builds a branched conversation through the real API: two main-thread

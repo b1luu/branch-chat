@@ -25,7 +25,8 @@ def test_triggers_on_push_and_pull_request(ci: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
-        'pip install -e ".[dev]"',
+        "pip install -r requirements-dev.lock",
+        "pip install --no-deps -e .",
         "ruff check .",
         "pytest -q",
         "npm ci",

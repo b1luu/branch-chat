@@ -35,6 +35,8 @@ target-version = "py312"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Explicit so newer pytest-asyncio stops warning; every async fixture here is per-test anyway.
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "ollama: real-model tests against a local Ollama; auto-skipped when unreachable",
 ]

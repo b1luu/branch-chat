@@ -92,11 +92,14 @@ Backend (Python 3.12):
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.lock      # pinned versions, same as CI and Docker
+pip install --no-deps -e .
 alembic upgrade head                      # SQLite file by default (DATABASE_URL to change)
 LLM_PROVIDER=mock uvicorn app.main:app --reload
 ```
+
+`pyproject.toml` declares version ranges; `requirements.lock` (runtime, used by the Docker image) and `requirements-dev.lock` (+ test tools, used by CI) pin every package, so all machines test the same versions. After changing deps in `pyproject.toml`, regenerate both with the `uv pip compile` command at the top of each file (a test fails if a lock no longer satisfies `pyproject.toml`).
 
 Frontend (Node 22):
 
