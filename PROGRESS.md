@@ -250,3 +250,13 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (224 passed, 13 skipped), frontend lint + 134 tests + build.
 - New deps: `react-markdown` ^10.1, `remark-gfm` ^4.0 (bundle 405 kB / 126 kB gzip).
 - Next: U2 (basic styling + real screenshot).
+
+## 2026-11-02 00:20 UTC — U2
+- Status: green
+- Done: **U2** new `frontend/src/styles.css` (plain CSS, imported in `main.tsx`): color tokens on `:root` with a `prefers-color-scheme: dark` set; grid layout (header, sidebar left, chat right, stacks under 800px); messages scroll inside the chat pane with the composer pinned at the bottom; user bubbles right/tinted, assistant left; quotes as blockquotes; merge notes in a pinned-note look; tree without bullets, depth indentation, active path/node highlighted, side branches marked with an orange rail; `:focus-visible` rings; existing state classes (`error-notice`, `empty`, `char-count`, `composer-hint`) styled. `flattenTree` rows gain `side` (off the main thread, same rule as `branchSegments`), rendered as `.side-branch`. New `scripts/screenshot.py` generates `docs/screenshot.png` (now in the README in place of the placeholder).
+- Tests: `styles.test.ts` (entry point imports the stylesheet; 20 key selectors styled; dark theme, narrow layout, focus rings; tree has no bullets), `tree.test.ts` side-branch rows (incl. a fork inside a side branch and multiple first turns), `TreeSidebar.test.tsx` side rows get `.side-branch`. No layout snapshots.
+- Decisions: stylesheet test reads the CSS as text with `node:fs` (Vitest stubs CSS imports to empty strings, even `?raw`), with a file-local `/// <reference types="node" />` so the app tsconfig stays browser-only. Screenshot script serves `frontend/dist` and the API from one in-process FastAPI app on a temp SQLite DB, with a scripted mock provider (canned Markdown replies in call order) so the shot shows real formatting; it builds the conversation through the real API (2 main turns, a quote branch, a merge back). Dev-only: needs Playwright for Python, not added to project deps.
+- Noticed, not changed: tree previews show raw Markdown (`**…**`, backticks) since `preview` is the stored text cut to length. Suggest a small item: strip Markdown syntax from previews (backend `preview` or frontend label).
+- Checks: backend ruff + pytest (224 passed, 13 skipped), frontend lint + 159 tests + build.
+- No new deps.
+- Next: backlog complete. Suggested: strip Markdown from tree previews, re-merge of a grown branch replacing the earlier note (Q6), backend lock file (Q10).

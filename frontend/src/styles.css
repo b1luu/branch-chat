@@ -1,0 +1,585 @@
+/*
+ * Branch Chat: the whole app stylesheet. Plain CSS, no framework.
+ * Colors are tokens on :root, swapped for dark mode via prefers-color-scheme,
+ * so components only ever reference var(--…).
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #efefec;
+  --text: #1d1d1b;
+  --muted: #65655f;
+  --border: #dcdcd6;
+  --accent: #2f6fdf;
+  --accent-text: #ffffff;
+  --accent-soft: #e3ecfb;
+  --user-bubble: #e3ecfb;
+  --side: #b5651d;
+  --side-soft: #f8ecdf;
+  --note-bg: #fff6d6;
+  --note-border: #e2c46a;
+  --danger: #b3261e;
+  --danger-soft: #fbe9e7;
+  --code-bg: #f0f0ec;
+  --radius: 10px;
+  --focus: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --surface: #1f1f1d;
+    --surface-2: #2a2a27;
+    --text: #ececea;
+    --muted: #a3a39c;
+    --border: #3a3a36;
+    --accent: #7aa5f5;
+    --accent-text: #0d1a33;
+    --accent-soft: #23314d;
+    --user-bubble: #23314d;
+    --side: #e3a45f;
+    --side-soft: #3a2b1c;
+    --note-bg: #3a3218;
+    --note-border: #8a7330;
+    --danger: #f2b8b5;
+    --danger-soft: #3d1f1d;
+    --code-bg: #2a2a27;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 var(--font);
+}
+
+/* ---------- Controls ---------- */
+
+button,
+textarea,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button[type="submit"],
+.app > aside > button:first-child {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+button[type="submit"]:hover:not(:disabled),
+.app > aside > button:first-child:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 3.2rem;
+  max-height: 40vh;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/* ---------- Layout: header, sidebar left, chat right ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "header header"
+    "aside main";
+  height: 100%;
+}
+
+.app > header {
+  grid-area: header;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.app > header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.app > aside {
+  grid-area: aside;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.app > main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 0.75rem 1rem 0;
+}
+
+.app > main > p {
+  color: var(--muted);
+}
+
+/* Narrow screens: stack sidebar above the chat. */
+@media (max-width: 800px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "header"
+      "aside"
+      "main";
+    height: auto;
+    min-height: 100%;
+  }
+  .app > aside {
+    max-height: 40vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .app > main {
+    min-height: 70vh;
+  }
+}
+
+/* ---------- Conversation list ---------- */
+
+ul[aria-label="Conversations"] {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+ul[aria-label="Conversations"] button {
+  width: 100%;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+ul[aria-label="Conversations"] button[aria-current="true"] {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+/* ---------- Tree sidebar ---------- */
+
+nav[aria-label="Branches"] {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+}
+
+/* Indentation comes from the inline padding-left (depth); this adds the gutter. */
+.tree-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin-left: 0.25rem;
+  border-left: 2px solid transparent;
+}
+
+.tree-node.side-branch {
+  border-left-color: var(--side);
+}
+
+.tree-label,
+.tree-toggle {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  text-align: left;
+}
+
+.tree-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.tree-toggle {
+  padding: 0.15rem 0.3rem;
+  color: var(--muted);
+}
+
+.tree-role {
+  font-weight: 600;
+}
+
+.tree-node.side-branch .tree-role {
+  color: var(--side);
+}
+
+.tree-node.on-path .tree-label {
+  color: var(--text);
+}
+
+.tree-node.on-path:not(.side-branch) {
+  border-left-color: var(--accent);
+}
+
+.tree-node.active .tree-label {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tree-empty {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+/* ---------- Branch nav (breadcrumb, back, merge) ---------- */
+
+.branch-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--side);
+  border-radius: var(--radius);
+  background: var(--side-soft);
+}
+
+.branch-nav nav {
+  flex: 1;
+  min-width: 0;
+}
+
+.branch-nav ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.branch-nav ol li + li::before {
+  content: "›";
+  color: var(--muted);
+  margin-right: 0.25rem;
+}
+
+.branch-nav ol button {
+  border: none;
+  background: transparent;
+  padding: 0 0.2rem;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.branch-nav [aria-current="location"] {
+  font-weight: 600;
+}
+
+/* ---------- Chat pane ---------- */
+
+.chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.message {
+  max-width: min(46rem, 85%);
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.message-user {
+  align-self: flex-end;
+  background: var(--user-bubble);
+  border-color: transparent;
+}
+
+.message-assistant {
+  align-self: flex-start;
+}
+
+.message[aria-busy="true"] .content {
+  color: var(--muted);
+}
+
+.quote {
+  margin: 0 0 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border-left: 3px solid var(--side);
+  color: var(--muted);
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.ask {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Merge-back notes: a pinned-note look, clearly not a chat turn. */
+.note {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--note-border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--note-bg);
+  font-size: 0.925rem;
+}
+
+.note-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+/* Markdown inside messages and notes. */
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown pre,
+.markdown blockquote,
+.markdown table {
+  margin: 0.5rem 0;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 0.8rem 0 0.4rem;
+  line-height: 1.25;
+}
+
+.markdown h1 {
+  font-size: 1.3rem;
+}
+
+.markdown h2 {
+  font-size: 1.15rem;
+}
+
+.markdown h3,
+.markdown h4 {
+  font-size: 1rem;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.4rem;
+}
+
+.markdown code {
+  font-size: 0.9em;
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+}
+
+.markdown pre {
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown blockquote {
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+.markdown table {
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 0.2rem 0.5rem;
+}
+
+.markdown a {
+  color: var(--accent);
+}
+
+/* Composer: pinned to the bottom of the chat pane. */
+.composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 0 1rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.composer textarea {
+  flex: 1 1 20rem;
+}
+
+.quote-draft {
+  flex-basis: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.quote-draft .quote {
+  flex: 1;
+  margin: 0;
+}
+
+.composer-hint,
+.char-count {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.char-count.over {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ---------- States: empty, loading, errors ---------- */
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 1rem;
+}
+
+.empty p {
+  margin: 0.2rem 0;
+}
+
+[role="status"] {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.error-notice,
+.chat > [role="alert"],
+.branch-nav [role="alert"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.error-notice p {
+  margin: 0;
+  flex: 1;
+}
+
+.branch-nav [role="alert"] {
+  flex-basis: 100%;
+  margin: 0;
+}

@@ -6,8 +6,9 @@
 
 When an AI answer confuses you, the usual move is a new tab, re-explaining the context, and losing your place. Branch Chat turns a conversation into a **tree**: highlight anything in an answer, click **Ask about this**, and explore it on a side branch that sees the full parent context but none of its siblings. When you're done, jump **Back to main thread**, or **Merge back** a short summary of what you learned so the main thread knows it too.
 
-> **Screenshot / GIF placeholder**: branching off a highlighted quote, then merging back.
-<!-- TODO: add docs/screenshot.png (or a GIF) once the UI is styled, and embed it here. -->
+![Branch Chat: a side branch asking about a highlighted quote, with the merged note pinned on the main-thread answer](docs/screenshot.png)
+
+<sub>A quote branch ("Ask about this" on *anchor member*) after **Merge back**: the note is pinned to the answer it branched from, and the tree marks the side branch. Regenerate with `python scripts/screenshot.py` (mock provider, no network).</sub>
 
 ## Features
 

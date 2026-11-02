@@ -72,6 +72,15 @@ describe("TreeSidebar", () => {
     expect(within(item("Side answer")).getByRole("button", { current: true })).toBeInTheDocument();
   });
 
+  it("marks side-branch rows so they can be styled apart from the main thread", async () => {
+    mockFetch(tree());
+    render(<TreeSidebar conversationId="c1" activeLeaf="a2" onSelect={vi.fn()} />);
+    await screen.findByRole("tree");
+    const side = items().filter((li) => li.classList.contains("side-branch"));
+    expect(side.map(label)).toEqual(["You: Side question", "AI: Side answer"]);
+    expect(item("Recursive?")).not.toHaveClass("side-branch");
+  });
+
   it("calls onSelect with the clicked node", async () => {
     mockFetch(tree());
     const onSelect = vi.fn();

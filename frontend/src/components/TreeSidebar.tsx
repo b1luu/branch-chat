@@ -94,7 +94,7 @@ export default function TreeSidebar({
       {/* A refresh failed after a reply: keep showing the last tree, offer a retry. */}
       {error && <ErrorNotice title="Couldn't refresh the tree" message={error} onRetry={retry} />}
       <ul role="tree" aria-label="Conversation tree" className="tree">
-        {rows.map(({ node, depth, forkSize }) => {
+        {rows.map(({ node, depth, forkSize, side }) => {
           const isFork = forkSize > 0;
           const isCollapsed = collapsed.has(node.id);
           const active = node.id === activeLeaf;
@@ -106,7 +106,8 @@ export default function TreeSidebar({
               aria-selected={active}
               aria-expanded={isFork ? !isCollapsed : undefined}
               data-on-path={onPath.has(node.id) || undefined}
-              className={`tree-node tree-${node.role}${onPath.has(node.id) ? " on-path" : ""}${active ? " active" : ""}`}
+              data-side-branch={side || undefined}
+              className={`tree-node tree-${node.role}${side ? " side-branch" : ""}${onPath.has(node.id) ? " on-path" : ""}${active ? " active" : ""}`}
               style={{ paddingLeft: `${depth}rem` }}
             >
               {isFork && (

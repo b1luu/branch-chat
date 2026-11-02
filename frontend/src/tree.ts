@@ -65,6 +65,12 @@ export interface TreeRow {
   depth: number;
   /** Number of children when this node is a fork (2+ children), else 0. */
   forkSize: number;
+  /**
+   * Off the main thread: this row's chain (or one it hangs under) started at a
+   * non-oldest child of a fork. Matches `branchSegments`, where the oldest child
+   * continues the parent branch and every later one starts a side branch.
+   */
+  side: boolean;
 }
 
 /**
@@ -90,8 +96,8 @@ export function flattenTree(
     else starts.push(root);
   }
   const multipleStarts = starts.length > 1;
-  const stack: { node: TreeNode; depth: number }[] = starts
-    .map((node) => ({ node, depth: multipleStarts ? 1 : 0 }))
+  const stack: { node: TreeNode; depth: number; side: boolean }[] = starts
+    .map((node, i) => ({ node, depth: multipleStarts ? 1 : 0, side: i > 0 }))
     .reverse();
 
   while (stack.length > 0) {
@@ -101,12 +107,12 @@ export function flattenTree(
     while (cur) {
       const children: TreeNode[] = kids.get(cur.id) ?? [];
       const forkSize = children.length > 1 ? children.length : 0;
-      rows.push({ node: cur, depth: item.depth, forkSize });
+      rows.push({ node: cur, depth: item.depth, forkSize, side: item.side });
       if (forkSize > 0) {
         if (!collapsed.has(cur.id)) {
           for (let i = children.length - 1; i >= 0; i--) {
             const child = children[i];
-            if (child) stack.push({ node: child, depth: item.depth + 1 });
+            if (child) stack.push({ node: child, depth: item.depth + 1, side: item.side || i > 0 });
           }
         }
         cur = undefined;

@@ -55,6 +55,18 @@ describe("tree helpers", () => {
     expect(shape(flattenTree(nodes, new Set(["b1"])))).toEqual(["u1@0", "a1@0/2", "u2@1", "a2@1", "q1@1", "b1@1/2"]);
   });
 
+  it("marks rows off the main thread as side branches, including forks inside them", () => {
+    const side = flattenTree(nodes, new Set())
+      .filter((r) => r.side)
+      .map((r) => r.node.id);
+    expect(side).toEqual(["q1", "b1", "q2", "q3"]);
+    const forkAtRoot = [node("r", null, "system"), node("x", "r"), node("y", "r")];
+    expect(flattenTree(forkAtRoot, new Set()).map((r) => [r.node.id, r.side])).toEqual([
+      ["x", false],
+      ["y", true],
+    ]);
+  });
+
   it("indents multiple first turns under the hidden root", () => {
     const forkAtRoot = [node("r", null, "system"), node("x", "r"), node("y", "r")];
     expect(shape(flattenTree(forkAtRoot, new Set()))).toEqual(["x@1", "y@1"]);
