@@ -22,16 +22,11 @@ from app.db import repository
 from app.db.models import Message
 from app.llm import LLMProvider
 from app.services import budget, chat, merge
+from app.services.preview import make_preview
 
 router = APIRouter(prefix="/api")
 DB = Annotated[Session, Depends(get_db)]
 LLM = Annotated[LLMProvider, Depends(get_llm)]
-
-
-def _preview(content: str) -> str:
-    """Single-line, length-capped preview for sidebar nodes."""
-    flat = " ".join(content.split())
-    return flat if len(flat) <= PREVIEW_CHARS else flat[: PREVIEW_CHARS - 1] + "…"
 
 
 @router.post("/conversations", status_code=status.HTTP_201_CREATED)
@@ -61,7 +56,7 @@ def get_tree(conversation_id: str, db: DB) -> TreeOut:
                 id=m.id,
                 parent_id=m.parent_id,
                 role=m.role,
-                preview=_preview(m.content),
+                preview=make_preview(m.content, m.role, PREVIEW_CHARS),
                 created_at=m.created_at,
             )
             for m in messages

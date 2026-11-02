@@ -260,3 +260,11 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (224 passed, 13 skipped), frontend lint + 159 tests + build.
 - No new deps.
 - Next: backlog complete. Suggested: strip Markdown from tree previews, re-merge of a grown branch replacing the earlier note (Q6), backend lock file (Q10).
+
+## 2026-11-02 UTC — Q11 (post-backlog bug pass)
+- Status: green
+- Done: **Q11** tree previews (sidebar labels, breadcrumb) showed raw Markdown from assistant replies (`**…**`, backticks, `##`, list dashes), the U2 finding. New `app/services/preview.py`: `markdown_to_text` strips fences (code kept), rules, table separators, headings, quotes, list/task markers, images/links (text kept), inline code, bold/italic/strike; `make_preview` replaces `routes._preview` and strips *before* truncating, so the 80-char cap counts visible text and never cuts a `**` pair. User turns are left verbatim (they render as plain text, and `**kwargs` is what they typed). 19 new tests in `test_preview.py` (each syntax, code contents not treated as emphasis, snake_case / `2 * 3` survive, unclosed marker left alone, strip-then-truncate, user turns untouched, `/tree` end to end); the end-to-end and truncation tests failed before the fix. SPEC `/tree` line updated.
+- Decisions: backend rather than frontend, so every consumer of `preview` (tree, breadcrumb) gets plain text and the client stays a dumb label. Small regex stripper instead of a Markdown library: a preview only has to be readable, not exact, and it avoids a new backend dep. Line-level patterns use `[ \t]` instead of `\s` so they can't eat across lines (caught by a test).
+- Checks: backend ruff + pytest (243 passed, 13 skipped), frontend lint + 159 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call), backend lock file (Q10).
