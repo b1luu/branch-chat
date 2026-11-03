@@ -28,11 +28,30 @@ function instantKey(iso: string): [number, string] {
  * what decides the "oldest child" (main branch) on the backend, e.g. for merge.
  */
 export function compareCreated(a: TreeNode, b: TreeNode): number {
-  const [sa, fa] = instantKey(a.created_at);
-  const [sb, fb] = instantKey(b.created_at);
-  if (sa !== sb) return sa - sb;
-  if (fa !== fb) return fa < fb ? -1 : 1;
+  const byTime = compareInstant(a.created_at, b.created_at);
+  if (byTime !== 0) return byTime;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** Order two API timestamps by the instant they name (see `instantKey` for why not as strings). */
+export function compareInstant(a: string, b: string): number {
+  const [sa, fa] = instantKey(a);
+  const [sb, fb] = instantKey(b);
+  if (sa !== sb) return sa - sb;
+  return fa < fb ? -1 : fa > fb ? 1 : 0;
+}
+
+/**
+ * The most recently created node, or `undefined` for an empty list.
+ *
+ * Ties (same instant, e.g. Windows' ~15 ms clock) go to the node listed last,
+ * not to the larger id: `/tree` lists parents before children, so a reply that
+ * shares its parent's timestamp still wins and we never resume on a non-leaf.
+ */
+export function latestNode<T extends Pick<TreeNode, "created_at">>(nodes: readonly T[]): T | undefined {
+  let latest: T | undefined;
+  for (const n of nodes) if (latest === undefined || compareInstant(n.created_at, latest.created_at) >= 0) latest = n;
+  return latest;
 }
 
 /** Children of each node id (`null` = roots), oldest first. */

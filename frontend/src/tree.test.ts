@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "./api/types.ts";
-import { branchSegments, branchTip, childrenIndex, compareCreated, flattenTree, pathIds } from "./tree.ts";
+import {
+  branchSegments,
+  branchTip,
+  childrenIndex,
+  compareCreated,
+  compareInstant,
+  flattenTree,
+  latestNode,
+  pathIds,
+} from "./tree.ts";
 
 let t = 0;
 function node(id: string, parent_id: string | null, role: TreeNode["role"] = "user"): TreeNode {
@@ -169,5 +178,50 @@ describe("created_at ordering (matches the server's ORDER BY created_at, id)", (
     expect(branchSegments(nodes, "main").map((s) => s.start.id)).toEqual(["root"]);
     expect(branchSegments(nodes, "side").map((s) => s.start.id)).toEqual(["root", "side"]);
     expect(branchTip(nodes, "root")).toBe("main");
+  });
+});
+
+describe("latestNode (where opening a conversation resumes)", () => {
+  const at = (id: string, parent_id: string | null, created_at: string): TreeNode => ({
+    id,
+    parent_id,
+    role: "user",
+    preview: id,
+    created_at,
+  });
+
+  it("is undefined for no nodes", () => {
+    expect(latestNode([])).toBeUndefined();
+  });
+
+  it("compares instants, so a reply on a whole second beats one earlier in that second", () => {
+    // As strings, "…:42Z" > "…:42.500000Z" ("Z" sorts after "."), which picked the older node.
+    const nodes = [
+      at("root", null, "2026-01-01T00:00:41.900000Z"),
+      at("newer", "root", "2026-01-01T00:00:42.500000Z"),
+      at("older", "root", "2026-01-01T00:00:42Z"),
+    ];
+    expect(latestNode(nodes)?.id).toBe("newer");
+  });
+
+  it("keeps microseconds and handles offsets", () => {
+    expect(
+      latestNode([at("b", null, "2026-01-01T00:00:42.123457Z"), at("a", null, "2026-01-01T00:00:42.123456Z")])?.id,
+    ).toBe("b");
+    expect(
+      latestNode([at("utc", null, "2026-01-01T00:30:00Z"), at("plus2", null, "2026-01-01T02:00:00+02:00")])?.id,
+    ).toBe("utc");
+  });
+
+  it("breaks ties by list order (parents first), not by id, so it lands on the child", () => {
+    const ts = "2026-01-01T00:00:42Z";
+    // The child's id sorts before its parent's; an id tiebreak would resume on the parent.
+    expect(latestNode([at("zz-parent", null, ts), at("aa-child", "zz-parent", ts)])?.id).toBe("aa-child");
+  });
+
+  it("compareInstant ignores ids and orders by instant", () => {
+    expect(compareInstant("2026-01-01T00:00:42Z", "2026-01-01T00:00:42.000000Z")).toBe(0);
+    expect(compareInstant("2026-01-01T00:00:42Z", "2026-01-01T00:00:42.5Z")).toBeLessThan(0);
+    expect(compareInstant("2026-01-01T00:00:43Z", "2026-01-01T00:00:42.999999Z")).toBeGreaterThan(0);
   });
 });

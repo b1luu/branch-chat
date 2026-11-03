@@ -296,3 +296,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (285 passed, 13 skipped), frontend lint + 169 tests + build.
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call).
+
+## 2026-11-03 22:50 UTC — Q15 (post-backlog bug pass: resume point + create error)
+- Status: green
+- Done: **Q15** opening a conversation resumes on its newest node, but `App.latestNodeId` compared `created_at` as strings, the exact trap `tree.ts` documents: the API omits a zero fraction (`…:05Z`) and `"."` sorts before `"Z"`, so a node at `…:05.5Z` lost to an older one at `…:05Z` and the app resumed on the wrong branch. New `tree.ts` helpers `compareInstant` (instant order, shared with `compareCreated`) and `latestNode`; App now uses `latestNode`. Also covered the one untested S4 error path: a failed "New conversation" shows the alert, leaves nothing half-opened, re-enables the button, and a retry works.
+- Tests: `tree.test.ts` `latestNode` block (empty list, whole-second case, µs + offsets, tie → listed-last child, `compareInstant`); `hardening.test.tsx` create-failure + retry, and resume-on-newest through the real App; the App resume test failed before the fix.
+- Decisions: ties (same instant, e.g. Windows' ~15 ms clock from Q10) go to the node listed *last*, not the larger id: `/tree` is parents-first, so a reply sharing its parent's timestamp still wins and we never resume on a non-leaf. That's why `latestNode` uses `compareInstant` rather than `compareCreated` (which breaks ties by id like the server's sibling order).
+- Checks: backend ruff + pytest (285 passed, 13 skipped), frontend lint + 176 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call).

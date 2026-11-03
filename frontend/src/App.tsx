@@ -5,6 +5,7 @@ import BranchNav from "./components/BranchNav.tsx";
 import ChatView from "./components/ChatView.tsx";
 import ErrorNotice from "./components/ErrorNotice.tsx";
 import TreeSidebar from "./components/TreeSidebar.tsx";
+import { latestNode } from "./tree.ts";
 
 type LoadState =
   | { kind: "loading" }
@@ -19,9 +20,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
  */
 async function latestNodeId(conversation: Conversation): Promise<string | null> {
   const tree = await getTree(conversation.id);
-  let latest = tree.nodes[0];
-  for (const n of tree.nodes) if (latest === undefined || n.created_at >= latest.created_at) latest = n;
-  return latest?.id ?? conversation.root_message_id;
+  return latestNode(tree.nodes)?.id ?? conversation.root_message_id;
 }
 
 export default function App() {

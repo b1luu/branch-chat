@@ -188,6 +188,57 @@ describe("App error and loading states", () => {
     expect(posts).toBe(1);
   });
 
+  it("reports a failed create, re-enables the button, and a retry opens the new conversation", async () => {
+    let posts = 0;
+    routeFetch({
+      "GET /api/conversations": () => jsonResponse([]),
+      "POST /api/conversations": () => {
+        posts += 1;
+        return posts === 1 ? jsonResponse({ detail: "database is locked" }, 503) : jsonResponse(conv, 201);
+      },
+      "GET /api/messages/root/path": () => jsonResponse([root]),
+      "GET /api/conversations/c1/tree": () => jsonResponse({ conversation_id: "c1", nodes: [treeNode(root)] }),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    await screen.findByText("No conversations yet.");
+    await ui.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't create a conversation: database is locked");
+    // Nothing half-opened: the list is still empty and no chat is shown.
+    expect(screen.getByText("No conversations yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Chat" })).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "New conversation" });
+    expect(button).toBeEnabled();
+
+    await ui.click(button);
+    expect(await screen.findByText("Send a message to start.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Conversations" })).toHaveTextContent("First");
+    expect(posts).toBe(2);
+  });
+
+  it("resumes on the newest node when an older one in the same second landed on a whole second", async () => {
+    // `…:05.5Z` is later than `…:05Z` (fraction omitted), but sorts first as text ("." < "Z").
+    const older = msg({ id: "a1", parent_id: "u1", role: "assistant", content: "older answer" });
+    const newer = msg({ id: "q1", parent_id: "a1", content: "newest question" });
+    const nodes = [
+      { ...treeNode(root), created_at: "2026-10-28T00:00:04.100000Z" },
+      { ...treeNode(u1), created_at: "2026-10-28T00:00:04.200000Z" },
+      { ...treeNode(older), created_at: "2026-10-28T00:00:05Z" },
+      { ...treeNode(newer), created_at: "2026-10-28T00:00:05.500000Z" },
+    ];
+    routeFetch({
+      "GET /api/conversations": () => jsonResponse([conv]),
+      "GET /api/conversations/c1/tree": () => jsonResponse({ conversation_id: "c1", nodes }),
+      "GET /api/messages/q1/path": () => jsonResponse([root, u1, older, newer]),
+      "GET /api/messages/a1/path": () => jsonResponse([root, u1, older]),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    await ui.click(await screen.findByRole("button", { name: "First" }));
+    expect(await screen.findByRole("list", { name: "Messages" })).toHaveTextContent("newest question");
+  });
+
   it("names the action that failed and can be dismissed", async () => {
     routeFetch({
       "GET /api/conversations": () => jsonResponse([conv]),
