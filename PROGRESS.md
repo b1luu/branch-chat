@@ -289,3 +289,10 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (285 passed, 13 skipped), frontend lint + 167 tests + build.
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call).
+
+## 2026-11-03 19:05 UTC — Q14 (post-backlog: SSE parser edge cases)
+- Status: green
+- Done: **Q14** `api/sse.ts` had untested branches in field parsing. 2 new tests in `sse.test.ts`: no space after the colon, only one leading space stripped, a bare `data` line (no colon) is an empty value, later colons stay in the value, `id`/`retry`/unknown fields ignored. All passed first time: the parser already followed the SSE spec; this pins it.
+- Checks: backend ruff + pytest (285 passed, 13 skipped), frontend lint + 169 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call).

@@ -50,6 +50,25 @@ describe("parseSSE", () => {
     expect(await collect(["data: line1\ndata: line2\n\n"])).toEqual([{ event: "message", data: "line1\nline2" }]);
   });
 
+  it("follows the SSE spec for colons and the space after them", async () => {
+    // No space after the colon is fine; only one leading space is stripped.
+    expect(await collect(["event:a\ndata:x\n\n", "event: b\ndata:  y \n\n"])).toEqual([
+      { event: "a", data: "x" },
+      { event: "b", data: " y " },
+    ]);
+    // A line with no colon is a field with an empty value; colons after the first stay in the value.
+    expect(await collect(["data\ndata: 1\n\n", "data: a:b: c\n\n"])).toEqual([
+      { event: "message", data: "\n1" },
+      { event: "message", data: "a:b: c" },
+    ]);
+  });
+
+  it("ignores id, retry and unknown fields", async () => {
+    expect(await collect(["id: 7\nretry: 1000\nfoo: bar\nevent: done\ndata: {}\n\n"])).toEqual([
+      { event: "done", data: "{}" },
+    ]);
+  });
+
   it("ignores comments and blocks without data", async () => {
     expect(await collect([": keep-alive\n\nevent: ping\n\nevent: x\ndata: y\n\n"])).toEqual([{ event: "x", data: "y" }]);
   });
