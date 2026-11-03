@@ -298,3 +298,27 @@ def test_reply_provider_error_still_reported_with_budget(
         conv = new_conversation(c)
         events = reply(c, conv["root_message_id"], "hi " * 100)
     assert events[-1][0] == "error"
+
+
+def test_summary_cache_is_bounded_and_evicts_least_recently_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cache lives for the process, so it must not grow without limit."""
+    monkeypatch.setattr(budget, "CACHE_SIZE", 2)
+    provider = SummaryAwareProvider()
+    a, b, c = ([ChatMessage("user", f"history {k}")] for k in "abc")
+
+    def summarize(old: list[ChatMessage]) -> str | None:
+        return run(budget.summarize(provider, old, max_tokens=50, max_chars=5_000))
+
+    assert summarize(a) == SUMMARY_TEXT
+    summarize(b)
+    summarize(a)  # hit: `a` becomes most recent, so `b` is now the oldest
+    assert len(provider.summary_calls) == 2
+    summarize(c)  # over the cap: evicts `b`, not `a`
+    assert len(budget._cache) == 2
+    summarize(a)
+    assert len(provider.summary_calls) == 3  # `a` still cached
+    summarize(b)
+    assert len(provider.summary_calls) == 4  # `b` was evicted, so it's summarized again
+    assert len(budget._cache) == 2

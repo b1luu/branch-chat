@@ -305,3 +305,10 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (285 passed, 13 skipped), frontend lint + 176 tests + build.
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call).
+
+## 2026-11-03 22:58 UTC — Q16 (post-backlog: summary cache bound)
+- Status: green
+- Done: **Q16** the D2 ancestor-summary cache is process-wide, and its size cap (LRU eviction) was the one untested part of `budget.py`. New test in `test_context_budget.py` with `CACHE_SIZE=2`: a hit refreshes recency, overflow evicts the least recently used entry (not the newest), size stays at the cap, and an evicted history is summarized again. Mutation-checked: evicting the newest, or dropping `move_to_end` on a hit, both fail it. No app code change.
+- Checks: backend ruff + pytest (286 passed, 13 skipped), frontend lint + 176 tests + build.
+- No new deps.
+- Next: backlog complete. Remaining uncovered lines are defensive (`??` fallbacks, a concurrent-merge race re-raise). Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
