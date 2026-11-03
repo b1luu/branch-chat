@@ -279,3 +279,13 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - No new deps (uv is a regen-only dev tool).
 - Local agent: next local run should reinstall with `pip install -r backend/requirements-dev.lock` so the PC tests the pinned versions.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call).
+
+## 2026-11-03 18:55 UTC — Q13 (post-backlog bug pass: unpaired surrogates)
+- Status: green
+- Done: **Q13** a request string holding half an emoji (JSON `"\ud83d"` with no low surrogate) got a **500** instead of a 422 on every write endpoint (reply content/quote, conversation title/system prompt). Pydantic rejects it correctly, but FastAPI's default 422 handler echoes the bad `input` back and crashes UTF-8 encoding it. New `app/api/validation.py` replaces that handler: same `{"detail": [...]}` body, with lone surrogates in it replaced by U+FFFD. The frontend could produce such a string itself: the quote was cut with `.slice(0, MAX_QUOTE_CHARS)` and breadcrumb labels with `.slice(0, 31)`, both in UTF-16 units. New `src/text.ts` (`codePointLength`, `truncateCodePoints`) is now used for the quote cap, breadcrumb labels and the composer's character counter/limit, which now count code points like the backend's `max_length` (50,000 emoji used to be blocked as "100,000 characters").
+- Tests: backend `test_unicode_input.py` (16: lone high/low surrogate in content and quote → 422 + nothing persisted, title/system_prompt → 422, escaped *valid* pair still works, limits count code points, ordinary 422 shape unchanged, `scrub_surrogates` cases); 8 failed before the fix. Frontend `text.test.ts` (count, truncate never leaves a lone surrogate), ChatView quote cap at an emoji boundary, composer counter with emoji, BranchNav label cut at an emoji + `(empty)` label; the 3 component tests failed before the fix.
+- Decisions: first tried a schema validator rejecting unencodable strings, but pydantic's JSON parser already rejects them (`string_unicode`), so the bug was only in rendering the 422; fixed there, once, for every endpoint. Kept the default 422 shape so the frontend's error display is unchanged.
+- Noticed, not changed: assistant text from a provider is not checked for lone surrogates before it's stored (would need a provider that streams JSON-escaped half pairs; none of ours do).
+- Checks: backend ruff + pytest (285 passed, 13 skipped), frontend lint + 167 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call).

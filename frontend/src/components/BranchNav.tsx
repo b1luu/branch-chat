@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { mergeBranch } from "../api/client.ts";
 import type { TreeNode } from "../api/types.ts";
 import { branchSegments, branchTip } from "../tree.ts";
+import { codePointLength, truncateCodePoints } from "../text.ts";
 
 interface BranchNavProps {
   nodes: readonly TreeNode[];
@@ -13,7 +14,7 @@ const LABEL_CHARS = 32;
 
 function shorten(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim() || "(empty)";
-  return flat.length > LABEL_CHARS ? `${flat.slice(0, LABEL_CHARS - 1)}…` : flat;
+  return codePointLength(flat) > LABEL_CHARS ? `${truncateCodePoints(flat, LABEL_CHARS - 1)}…` : flat;
 }
 
 /**

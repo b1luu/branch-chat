@@ -1,11 +1,13 @@
 """FastAPI application entrypoint."""
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.ratelimit import RateLimitConfig, RateLimitMiddleware, TokenBucketLimiter
 from app.api.routes import router
+from app.api.validation import validation_error
 from app.db.errors import ConflictError, NotFoundError
 from app.db.session import make_engine, make_session_factory
 from app.llm import LLMProvider, get_provider
@@ -39,6 +41,8 @@ def create_app(
         app.add_middleware(
             RateLimitMiddleware, limiter=app.state.rate_limiter, trust_proxy=config.trust_proxy
         )
+
+    app.add_exception_handler(RequestValidationError, validation_error)
 
     @app.exception_handler(NotFoundError)
     async def not_found(_request: Request, exc: NotFoundError) -> JSONResponse:

@@ -5,7 +5,7 @@ import { controlledSSE, fetchCall, jsonResponse, mockFetch, sseEvent, sseRespons
 import { msg } from "../test/messages.ts";
 import { selectText } from "../test/select.ts";
 import type { Message } from "../api/types.ts";
-import ChatView from "./ChatView.tsx";
+import ChatView, { MAX_QUOTE_CHARS } from "./ChatView.tsx";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -240,6 +240,24 @@ describe("ChatView — Ask about this", () => {
       "Because it is shared.",
     ]);
     expect(screen.queryByLabelText("Asking about")).not.toBeInTheDocument();
+  });
+
+  it("caps a long highlight at MAX_QUOTE_CHARS without splitting an emoji", async () => {
+    // Cutting by UTF-16 units used to leave half an emoji at the end (Q13).
+    const long = `${"x".repeat(MAX_QUOTE_CHARS - 1)}\u{1F680}tail`;
+    const big = msg({ id: "a1", parent_id: "u1", role: "assistant", content: long });
+    const fetchMock = mockFetch(jsonResponse([root, u1, big]), controlledSSE().response);
+    const ui = userEvent.setup();
+    render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+
+    highlight(long, long);
+    await ui.click(screen.getByRole("button", { name: "Ask about this" }));
+    await ui.type(screen.getByRole("textbox", { name: "Message" }), "what?{Enter}");
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const body = JSON.parse(fetchCall(fetchMock, 1)[1]?.body as string) as { quote: string };
+    expect(body.quote).toBe(`${"x".repeat(MAX_QUOTE_CHARS - 1)}\u{1F680}`);
   });
 
   it("cancelling the quote sends a normal reply under the leaf", async () => {

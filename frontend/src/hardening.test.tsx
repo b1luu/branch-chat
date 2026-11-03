@@ -313,6 +313,22 @@ describe("ChatView error states and validation", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("counts characters in code points, like the backend", async () => {
+    // An emoji is 2 UTF-16 units but 1 character to the API (Q13).
+    mockFetch(jsonResponse([root, u1, a1]));
+    render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+    const box = screen.getByRole("textbox", { name: "Message" });
+
+    fireEvent.change(box, { target: { value: "\u{1F680}".repeat(MAX_CONTENT_CHARS) } });
+    expect(screen.getByText("50,000 / 50,000 characters")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    fireEvent.change(box, { target: { value: "\u{1F680}".repeat(MAX_CONTENT_CHARS + 1) } });
+    expect(screen.getByText("Message is too long: 50,001 / 50,000 characters.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
   it("marks the streaming reply busy and the Send button as in progress", async () => {
     const stream = controlledSSE();
     mockFetch(jsonResponse([root, u1, a1]), stream.response);

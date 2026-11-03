@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { selectionInMessage } from "../selection.ts";
+import { codePointLength, truncateCodePoints } from "../text.ts";
 import { getPath, streamReply } from "../api/client.ts";
 import type { Message, Note } from "../api/types.ts";
 import ErrorNotice from "./ErrorNotice.tsx";
@@ -32,7 +33,7 @@ export interface QuoteTarget {
   text: string;
 }
 
-/** Same cap as the backend's `ReplyCreate.quote` (schemas.py). */
+/** Same cap as the backend's `ReplyCreate.quote` (schemas.py), in code points (see text.ts). */
 export const MAX_QUOTE_CHARS = 20_000;
 /** Same cap as the backend's `ReplyCreate.content` (schemas.py); checked here so the user never gets a 422. */
 export const MAX_CONTENT_CHARS = 50_000;
@@ -119,7 +120,8 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const streaming = pending !== null;
-  const tooLong = draft.length > MAX_CONTENT_CHARS;
+  const draftChars = codePointLength(draft);
+  const tooLong = draftChars > MAX_CONTENT_CHARS;
   const replacesQuestion = !quote && replyParent(path, leafId) !== leafId;
 
   async function send() {
@@ -181,7 +183,7 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
   function onSelectionEnd() {
     if (streaming) return;
     const found = selectionInMessage(window.getSelection(), "assistant");
-    setSelection(found && { messageId: found.messageId, text: found.text.slice(0, MAX_QUOTE_CHARS) });
+    setSelection(found && { messageId: found.messageId, text: truncateCodePoints(found.text, MAX_QUOTE_CHARS) });
   }
 
   function askAboutSelection() {
@@ -267,16 +269,16 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
           rows={3}
           aria-invalid={tooLong || undefined}
           aria-describedby={
-            [replacesQuestion && "composer-hint", draft.length >= COUNTER_FROM && "composer-count"]
+            [replacesQuestion && "composer-hint", draftChars >= COUNTER_FROM && "composer-count"]
               .filter(Boolean)
               .join(" ") || undefined
           }
         />
-        {draft.length >= COUNTER_FROM && (
+        {draftChars >= COUNTER_FROM && (
           <p id="composer-count" className={`char-count${tooLong ? " over" : ""}`} aria-live="polite">
             {tooLong
-              ? `Message is too long: ${draft.length.toLocaleString("en-US")} / ${MAX_CONTENT_CHARS.toLocaleString("en-US")} characters.`
-              : `${draft.length.toLocaleString("en-US")} / ${MAX_CONTENT_CHARS.toLocaleString("en-US")} characters`}
+              ? `Message is too long: ${draftChars.toLocaleString("en-US")} / ${MAX_CONTENT_CHARS.toLocaleString("en-US")} characters.`
+              : `${draftChars.toLocaleString("en-US")} / ${MAX_CONTENT_CHARS.toLocaleString("en-US")} characters`}
           </p>
         )}
         <button type="submit" disabled={streaming || tooLong || draft.trim() === ""}>

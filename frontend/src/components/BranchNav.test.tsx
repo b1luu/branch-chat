@@ -81,6 +81,20 @@ describe("BranchNav", () => {
     expect(onSelect).toHaveBeenLastCalledWith("b2");
   });
 
+  it("shortens long labels by code points, never splitting an emoji", () => {
+    // The cut lands right after the 31st character, which is an emoji (Q13).
+    const preview = `${"a".repeat(30)}\u{1F680}\u{1F680} and more`;
+    const emojiNodes = nodes.map((n) => (n.id === "q1" ? { ...n, preview } : n));
+    render(<BranchNav nodes={emojiNodes} activeLeaf="b1" onSelect={vi.fn()} />);
+    expect(crumbs()).toEqual(["Main thread", `${"a".repeat(30)}\u{1F680}…`]);
+  });
+
+  it("labels a branch with a blank preview as (empty)", () => {
+    const blank = nodes.map((n) => (n.id === "q1" ? { ...n, preview: "  \n " } : n));
+    render(<BranchNav nodes={blank} activeLeaf="b1" onSelect={vi.fn()} />);
+    expect(crumbs()).toEqual(["Main thread", "(empty)"]);
+  });
+
   it("works when the active leaf is the fork's own first node", () => {
     render(<BranchNav nodes={nodes} activeLeaf="q1" onSelect={vi.fn()} />);
     expect(crumbs()).toEqual(["Main thread", "Why is it called a common table…"]);
