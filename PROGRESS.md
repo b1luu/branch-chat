@@ -312,3 +312,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (286 passed, 13 skipped), frontend lint + 176 tests + build.
 - No new deps.
 - Next: backlog complete. Remaining uncovered lines are defensive (`??` fallbacks, a concurrent-merge race re-raise). Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-04 UTC — Q17 (post-backlog bug pass: new conversation vanishing from the list)
+- Status: green
+- Done: **Q17** App was the weakest-covered frontend module (84.8% branches). Found a race: "New conversation" is enabled while the conversation list is still loading (or after it failed). If the list response was a snapshot from before the create, it overwrote the list and the new conversation disappeared from the sidebar while its chat stayed open (same after a failed list + "Try again" that returns a stale list). App now remembers conversations created in this session (`useRef`) and `withCreated` puts any the fetched list lacks in front of it, without duplicates.
+- Tests (`hardening.test.tsx`): create during a held list load → list shows new + old, new one `aria-current`; late list that already has it → listed once; failed list → create → retry still lists it; empty `/tree` → opens at the conversation root; list resolving after unmount → no React warnings. The first and third failed before the fix.
+- Decisions: merge on the client rather than refetching after create: no extra request, and correct even if the server read is stale. A ref, not state, since it only feeds the list merge and never renders on its own.
+- Checks: backend ruff + pytest (286 passed, 13 skipped, no backend change), frontend lint + 181 tests + build.
+- No new deps (coverage measured with a temporary, unsaved `@vitest/coverage-v8`).
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

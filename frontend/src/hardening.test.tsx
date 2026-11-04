@@ -217,6 +217,93 @@ describe("App error and loading states", () => {
     expect(posts).toBe(2);
   });
 
+  it("keeps a conversation created while the list was still loading (Q17)", async () => {
+    // The list request was answered before the create, so its snapshot lacks the new one.
+    const listed = deferred<undefined>();
+    const older = { ...conv, id: "c0", title: "Older", root_message_id: "r0" };
+    routeFetch({
+      "GET /api/conversations": () => heldJson(listed.promise, [older]),
+      "POST /api/conversations": () => jsonResponse(conv, 201),
+      "GET /api/messages/root/path": () => jsonResponse([root]),
+      "GET /api/conversations/c1/tree": () => jsonResponse({ conversation_id: "c1", nodes: [treeNode(root)] }),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading conversations…");
+    await ui.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(await screen.findByText("Send a message to start.")).toBeInTheDocument();
+    listed.resolve(undefined);
+    const list = await screen.findByRole("list", { name: "Conversations" });
+    const titles = within(list)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(titles).toEqual(["First", "Older"]);
+    expect(within(list).getByRole("button", { name: "First" })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("doesn't list a conversation twice when the late list already has it", async () => {
+    const listed = deferred<undefined>();
+    routeFetch({
+      "GET /api/conversations": () => heldJson(listed.promise, [conv]),
+      "POST /api/conversations": () => jsonResponse(conv, 201),
+      "GET /api/messages/root/path": () => jsonResponse([root]),
+      "GET /api/conversations/c1/tree": () => jsonResponse({ conversation_id: "c1", nodes: [treeNode(root)] }),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    await ui.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(await screen.findByText("Send a message to start.")).toBeInTheDocument();
+    listed.resolve(undefined);
+    const list = await screen.findByRole("list", { name: "Conversations" });
+    expect(within(list).getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("lists a conversation created while the list had failed, once the retry succeeds", async () => {
+    let gets = 0;
+    routeFetch({
+      "GET /api/conversations": () => {
+        gets += 1;
+        // A replica that hasn't seen the new row yet: the retry still lacks it.
+        return gets === 1 ? jsonResponse({ detail: "boom" }, 500) : jsonResponse([]);
+      },
+      "POST /api/conversations": () => jsonResponse(conv, 201),
+      "GET /api/messages/root/path": () => jsonResponse([root]),
+      "GET /api/conversations/c1/tree": () => jsonResponse({ conversation_id: "c1", nodes: [treeNode(root)] }),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    await ui.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(await screen.findByText("Send a message to start.")).toBeInTheDocument();
+    await ui.click(retry);
+    const list = await screen.findByRole("list", { name: "Conversations" });
+    expect(list).toHaveTextContent("First");
+    expect(screen.queryByText("No conversations yet.")).not.toBeInTheDocument();
+  });
+
+  it("opens a conversation with an empty tree at its root", async () => {
+    routeFetch({
+      "GET /api/conversations": () => jsonResponse([conv]),
+      "GET /api/conversations/c1/tree": () => jsonResponse({ conversation_id: "c1", nodes: [] }),
+      "GET /api/messages/root/path": () => jsonResponse([root]),
+    });
+    const ui = userEvent.setup();
+    render(<App />);
+    await ui.click(await screen.findByRole("button", { name: "First" }));
+    expect(await screen.findByText("Send a message to start.")).toBeInTheDocument();
+  });
+
+  it("ignores a conversation list that arrives after unmount", async () => {
+    const listed = deferred<undefined>();
+    routeFetch({ "GET /api/conversations": () => heldJson(listed.promise, [conv]) });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { unmount } = render(<App />);
+    unmount();
+    listed.resolve(undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it("resumes on the newest node when an older one in the same second landed on a whole second", async () => {
     // `…:05.5Z` is later than `…:05Z` (fraction omitted), but sorts first as text ("." < "Z").
     const older = msg({ id: "a1", parent_id: "u1", role: "assistant", content: "older answer" });

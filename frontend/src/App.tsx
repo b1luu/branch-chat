@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createConversation, getTree, listConversations } from "./api/client.ts";
 import type { Conversation, Message, TreeNode } from "./api/types.ts";
 import BranchNav from "./components/BranchNav.tsx";
@@ -13,6 +13,18 @@ type LoadState =
   | { kind: "ready"; conversations: Conversation[] };
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/**
+ * Put conversations created in this session in front of a fetched list, unless
+ * the list already has them. "New conversation" works while the list is still
+ * loading (or after it failed), so the list response can be a snapshot taken
+ * before the create; without this the new conversation would vanish from the
+ * sidebar while its chat stays open.
+ */
+function withCreated(fetched: Conversation[], created: readonly Conversation[]): Conversation[] {
+  const known = new Set(fetched.map((c) => c.id));
+  return [...created.filter((c) => !known.has(c.id)), ...fetched];
+}
 
 /**
  * Pick where to resume a conversation: its most recently created node.
@@ -42,6 +54,8 @@ export default function App() {
    * the open one. (The callback may be a stale closure from when the send started,
    * so it only uses the functional state update.)
    */
+  // Conversations created in this session, newest first (see `withCreated`).
+  const created = useRef<Conversation[]>([]);
   const [replyCounts, setReplyCounts] = useState<Readonly<Record<string, number>>>({});
   const onReplyPersisted = (m: Message) =>
     setReplyCounts((c) => ({ ...c, [m.conversation_id]: (c[m.conversation_id] ?? 0) + 1 }));
@@ -50,7 +64,7 @@ export default function App() {
     let cancelled = false;
     listConversations()
       .then((conversations) => {
-        if (!cancelled) setState({ kind: "ready", conversations });
+        if (!cancelled) setState({ kind: "ready", conversations: withCreated(conversations, created.current) });
       })
       .catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: errorText(err) });
@@ -81,6 +95,7 @@ export default function App() {
     setBusy({ kind: "creating" });
     try {
       const c = await createConversation();
+      created.current = [c, ...created.current];
       setState((s) => (s.kind === "ready" ? { kind: "ready", conversations: [c, ...s.conversations] } : s));
       setActiveConversation(c.id);
       setActiveLeaf(c.root_message_id);
