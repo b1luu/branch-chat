@@ -321,3 +321,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (286 passed, 13 skipped, no backend change), frontend lint + 181 tests + build.
 - No new deps (coverage measured with a temporary, unsaved `@vitest/coverage-v8`).
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-04 22:50 UTC — Q18 (post-backlog bug pass: reply/note that can't be saved)
+- Status: green
+- Done: **Q18** the assistant node's commit at the end of `stream_reply` was unguarded: if it raised, the SSE body just stopped after the tokens (no `done`, no `error`; the UI fell back to "stream ended before the assistant finished") and the session was left mid-transaction. Reproduced with the case Q13 flagged: a provider token holding an unpaired surrogate (JSON-escaped half emoji) can't be UTF-8 encoded by SQLite or Postgres drivers. Now (1) reply text and merge-note text go through `scrub_surrogates` before saving (lone halves → U+FFFD; halves that arrived in separate chunks are recombined into the real emoji), and (2) a failed commit rolls back, is logged, and sends `error` "Could not save the reply; please retry" (DB internals stay in the log). The user turn stays childless, so a retry reuses it (no duplicate sibling).
+- Tests: new `test_reply_save_errors.py` (6): lone surrogate in a reply saved as U+FFFD; split pair recombined; whitespace + half emoji isn't treated as blank; a forced flush failure (session `before_flush` hook) gives `error` and keeps the user turn; retry after it reuses the user turn; lone surrogate in a merge summary → 201 with U+FFFD. All 6 failed before the fix.
+- Decisions: scrub the joined text, not each token, so split pairs survive; tokens are streamed unchanged. Generic error detail on save failure instead of the exception text, unlike provider errors, because a DB error message can leak schema/connection details.
+- Checks: backend ruff + pytest (292 passed, 13 skipped), frontend lint + 181 tests + build (no frontend change).
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

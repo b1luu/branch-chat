@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import MessageOut
+from app.api.validation import scrub_surrogates
 from app.db import repository
 from app.db.errors import ConflictError
 from app.db.models import Message, Note, Role
@@ -128,6 +129,13 @@ async def stream_reply(
     handler returns. The assistant node is written only once the stream
     completes, so a failed or abandoned generation leaves no half-written reply;
     an empty (or whitespace-only) answer is reported as `error` too.
+    Saving the reply is guarded as well: if the commit fails, the client gets an
+    `error` event instead of a stream that just stops (Q18). Unpaired UTF-16
+    surrogates in the provider's text (a JSON-escaped half emoji) are replaced
+    with U+FFFD before saving, since no database driver can encode them. This
+    runs on the joined text, so an emoji whose two halves arrived in separate
+    chunks is recombined into one code point rather than lost; tokens are
+    streamed as-is (JSON-escaped, so the client joins them the same way).
     If the path is over `context_budget` (D2), old ancestors are condensed into
     one summary message first; nothing about that is persisted to the tree.
     """
@@ -145,7 +153,7 @@ async def stream_reply(
             logger.exception("LLM provider %s failed", provider.name)
             yield sse("error", {"detail": f"LLM provider error: {exc}"})
             return
-        content = "".join(chunks)
+        content = scrub_surrogates("".join(chunks))
         if not content.strip():
             # Treat a blank answer like a failure: a blank assistant node would be a
             # dead bubble, and Anthropic rejects any later prompt containing an
@@ -161,5 +169,11 @@ async def stream_reply(
             content=content,
         )
         db.add(assistant)
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("could not save the reply to %s", user_msg.id)
+            yield sse("error", {"detail": "Could not save the reply; please retry"})
+            return
         yield sse("done", MessageOut.model_validate(assistant).model_dump(mode="json"))
