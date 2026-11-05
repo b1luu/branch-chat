@@ -42,6 +42,9 @@ LIMITED_PATHS = (
     re.compile(r"^/api/branches/[^/]+/merge/?$"),
 )
 MAX_TRACKED_CLIENTS = 10_000
+# After pruning at the cap, shrink to this fraction of it so the O(n) prune runs
+# at most once per ~1,000 new clients instead of on every one.
+PRUNE_LOW_WATER = 0.9
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -82,6 +85,7 @@ class TokenBucketLimiter:
     per_minute: float
     burst: int
     clock: Callable[[], float] = time.monotonic
+    max_clients: int = MAX_TRACKED_CLIENTS
     _buckets: dict[str, _Bucket] = field(default_factory=dict)
 
     @property
@@ -110,16 +114,28 @@ class TokenBucketLimiter:
         return (1.0 - bucket.tokens) / self.rate
 
     def _prune(self, now: float) -> None:
-        """Bound memory: forget clients whose bucket has refilled completely.
+        """Bound memory once `max_clients` buckets are tracked.
 
-        A full bucket is indistinguishable from a brand-new one, so dropping it
-        changes nothing for that client.
+        First forget clients whose bucket has refilled completely: a full bucket
+        is indistinguishable from a brand-new one, so dropping it changes
+        nothing for that client. If that isn't enough (many clients active
+        within one refill window, e.g. a flood of distinct IPv6 addresses), evict
+        the fullest remaining buckets: forgetting one only refunds that client
+        its few missing tokens. Either way, shrink to the low-water mark, so the
+        dict can never grow past the cap and the scan doesn't repeat for every
+        new client.
         """
-        if len(self._buckets) < MAX_TRACKED_CLIENTS:
+        if len(self._buckets) < self.max_clients:
             return
         for key, bucket in list(self._buckets.items()):
             self._refill(bucket, now)
             if bucket.tokens >= self.burst:
+                del self._buckets[key]
+        target = int(self.max_clients * PRUNE_LOW_WATER)
+        excess = len(self._buckets) - target
+        if excess > 0:
+            fullest = sorted(self._buckets, key=lambda k: self._buckets[k].tokens, reverse=True)
+            for key in fullest[:excess]:
                 del self._buckets[key]
 
     @property
@@ -128,13 +144,23 @@ class TokenBucketLimiter:
 
 
 def client_key(scope: Scope, trust_proxy: bool) -> str:
-    """The client IP for `scope`: the socket peer, or the last X-Forwarded-For hop."""
+    """The client IP for `scope`: the socket peer, or the last X-Forwarded-For hop.
+
+    A request can carry several X-Forwarded-For lines (a client-sent one plus
+    one a proxy appended). They form one list in order (RFC 9110 §5.3), so the
+    hop our own proxy added is the last entry of the *last* line; the earlier
+    lines are client-controlled and must not pick the key.
+    """
     if trust_proxy:
-        for name, value in scope.get("headers", []):
-            if name == b"x-forwarded-for":
-                hops = [h.strip() for h in value.decode("latin-1").split(",") if h.strip()]
-                if hops:
-                    return hops[-1]
+        hops = [
+            hop.strip()
+            for name, value in scope.get("headers", [])
+            if name == b"x-forwarded-for"
+            for hop in value.decode("latin-1").split(",")
+            if hop.strip()
+        ]
+        if hops:
+            return hops[-1]
     client = scope.get("client")
     return client[0] if client else "unknown"
 

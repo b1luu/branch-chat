@@ -84,6 +84,35 @@ def test_idle_full_buckets_are_pruned(clock: FakeClock) -> None:
     assert limiter.tracked_clients == 1
 
 
+
+def test_busy_clients_cannot_grow_tracking_past_the_cap(clock: FakeClock) -> None:
+    """Q20: a flood of distinct clients that all stay non-full used to grow the
+    dict forever (pruning only dropped full buckets) and rescan it on every new
+    client. Now it shrinks to the low-water mark, evicting the fullest first."""
+    limiter = TokenBucketLimiter(per_minute=60, burst=3, clock=clock, max_clients=10)
+    for i in range(10):
+        limiter.acquire(f"ip{i}")  # 2 tokens left each
+    limiter.acquire("ip0")  # ip0: 1 token left, the emptiest
+    limiter.acquire("ip0")  # ip0: 0 tokens left
+    for i in range(500):
+        limiter.acquire(f"flood{i}")
+        assert limiter.tracked_clients <= 10
+    # The heavy user was never forgotten (its bucket was never the fullest)...
+    assert "ip0" in limiter._buckets
+    assert limiter.acquire("ip0") is not None  # ...so it is still limited.
+
+
+def test_prune_shrinks_to_low_water_mark(clock: FakeClock) -> None:
+    limiter = TokenBucketLimiter(per_minute=60, burst=3, clock=clock, max_clients=100)
+    for i in range(100):
+        limiter.acquire(f"ip{i}")
+    limiter.acquire("one-more")
+    # 90 kept (low-water), then the newcomer added: room for ~10 more before
+    # the next O(n) prune.
+    assert limiter.tracked_clients == 91
+    assert "one-more" in limiter._buckets
+
+
 # --- request matching / client key ---------------------------------------------
 
 
@@ -112,6 +141,23 @@ def test_client_key_uses_peer_unless_proxy_trusted() -> None:
     assert client_key(scope, trust_proxy=True) == "203.0.113.7"
     assert client_key({"client": ("10.0.0.5", 1), "headers": []}, trust_proxy=True) == "10.0.0.5"
     assert client_key({"headers": []}, trust_proxy=False) == "unknown"
+
+
+def test_client_key_uses_last_line_of_repeated_forwarded_for() -> None:
+    """Q20: with a client-sent X-Forwarded-For line plus one our proxy appended,
+    the key must come from the proxy's (last) line, not the spoofable first."""
+    scope = {
+        "client": ("10.0.0.5", 1234),
+        "headers": [
+            (b"x-forwarded-for", b"6.6.6.6"),
+            (b"user-agent", b"x"),
+            (b"x-forwarded-for", b"203.0.113.7"),
+        ],
+    }
+    assert client_key(scope, trust_proxy=True) == "203.0.113.7"
+    # An empty last line doesn't hide the earlier hops' last entry.
+    scope["headers"] = [(b"x-forwarded-for", b"6.6.6.6, 203.0.113.7"), (b"x-forwarded-for", b" ")]
+    assert client_key(scope, trust_proxy=True) == "203.0.113.7"
 
 
 def test_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:

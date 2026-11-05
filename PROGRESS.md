@@ -340,3 +340,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - No new deps (coverage via a temporary, unsaved `pytest-cov`).
 - Local agent: real Ollama sends `finish_reason` + `[DONE]`, so local runs should be unaffected; a failure mentioning "ended before the reply finished" would mean otherwise.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-05 22:55 UTC — Q20 (post-backlog bug pass: rate limiter under a client flood + repeated X-Forwarded-For)
+- Status: green
+- Done: **Q20** two D3 bugs. (1) `_prune` only dropped *full* buckets, so once 10k clients were active within one refill window (trivial with IPv6 addresses) the bucket dict grew without bound and every new client triggered a full O(n) rescan. Now, after dropping full buckets, it evicts the *fullest* remaining ones down to a 90% low-water mark: memory is capped and the scan runs at most once per ~1,000 new clients. (2) With `RATE_LIMIT_TRUST_PROXY=true`, `client_key` used the last hop of the *first* `X-Forwarded-For` line; a client-sent line plus one a proxy appended would let the client pick its own key. Now it takes the last hop across all lines (RFC 9110 list order).
+- Tests (`test_rate_limit.py`, +3): flood of 500 new clients never exceeds a cap of 10 and the heavy (emptiest) user is never forgotten, so it stays limited; prune shrinks to the low-water mark; repeated XFF lines → last line's hop, and a blank last line doesn't hide earlier hops. All 3 failed before the fix; flipping eviction to "emptiest first" fails the flood test.
+- Decisions: evict fullest-first because forgetting a bucket only refunds that client its missing tokens, so the cheapest eviction is the client closest to full; the actively limited client keeps its debt. Added `max_clients` to `TokenBucketLimiter` (default unchanged) so tests don't need 10k entries. Our nginx sends one combined XFF line, so Docker setups were not exposed to (2); it matters for other proxies.
+- Checks: backend ruff + pytest (305 passed, 13 skipped), frontend lint + 181 tests + build (no frontend change).
+- No new deps (coverage via a temporary, unsaved `pytest-cov`).
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
