@@ -330,3 +330,13 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (292 passed, 13 skipped), frontend lint + 181 tests + build (no frontend change).
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-05 UTC — Q19 (post-backlog bug pass: cut-off provider streams)
+- Status: green
+- Done: **Q19** if a provider's HTTP body just *ended* mid-reply (proxy idle timeout, Ollama restart, dropped Anthropic stream with a clean close), httpx raises nothing, so the tokens so far were saved as the complete assistant reply. Now each provider requires its own end marker: Ollama/OpenAI-style needs `[DONE]` or a `finish_reason` (new `StreamState.saw_done` from `iter_sse_json`), Anthropic needs `message_stop`. Otherwise `ProviderError` → the existing path: SSE `error`, nothing persisted, user turn reused on retry. Same protection applies to merge summaries and D2 ancestor summaries (they share the providers).
+- Tests: new `test_stream_truncation.py` (10): cut-off Ollama stream raises after streaming the partial tokens; empty 200 body raises; `finish_reason` without `[DONE]` is complete; `length` finish is complete; Anthropic without `message_stop` (two cut points) raises; endpoint: cut-off → `error`, no assistant row, retry reuses the user turn; `iter_sse_json` records `[DONE]`, and skips blank data / non-object payloads / comment + `event:` lines with CRLF (covers two previously unhit branches). 5 failed before the fix.
+- Decisions: accept `finish_reason` *or* `[DONE]` for OpenAI-style so other compatible servers that omit `[DONE]` still work; `length` (max_tokens) is a normal end, not a cut-off. Tokens still stream live; only the save is refused, matching how provider errors already worked.
+- Checks: backend ruff + pytest (302 passed, 13 skipped), frontend lint + 181 tests + build (no frontend change).
+- No new deps (coverage via a temporary, unsaved `pytest-cov`).
+- Local agent: real Ollama sends `finish_reason` + `[DONE]`, so local runs should be unaffected; a failure mentioning "ended before the reply finished" would mean otherwise.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

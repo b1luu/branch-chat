@@ -11,7 +11,13 @@ from typing import Any
 import httpx
 
 from app.llm.base import DEFAULT_MAX_TOKENS, ChatMessage, LLMProvider
-from app.llm.http_base import DEFAULT_TIMEOUT, ProviderError, iter_sse_json, raise_for_status
+from app.llm.http_base import (
+    DEFAULT_TIMEOUT,
+    ProviderError,
+    StreamState,
+    iter_sse_json,
+    raise_for_status,
+)
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 DEFAULT_OLLAMA_MODEL = "llama3.1:8b"
@@ -46,18 +52,28 @@ class OllamaProvider(LLMProvider):
     ) -> AsyncIterator[str]:
         url = f"{self.base_url}/chat/completions"
         payload = self.build_payload(messages, max_tokens)
+        # A body that just stops (proxy idle timeout, server restart) is not an
+        # HTTP error, so without this check a half reply would be saved as if it
+        # were complete. A finished OpenAI-style stream has a `finish_reason` on
+        # its last choice and then `[DONE]`; either one counts as finished.
+        state = StreamState()
+        finished = False
         try:
             async with (
                 httpx.AsyncClient(timeout=self.timeout) as client,
                 client.stream("POST", url, json=payload) as response,
             ):
                 await raise_for_status(response, "Ollama")
-                async for event in iter_sse_json(response):
+                async for event in iter_sse_json(response, state):
                     if "error" in event:
                         raise ProviderError(f"Ollama stream error: {event['error']}")
                     for choice in event.get("choices") or []:
                         text = (choice.get("delta") or {}).get("content")
                         if text:
                             yield text
+                        if choice.get("finish_reason"):
+                            finished = True
         except httpx.HTTPError as exc:
             raise ProviderError(f"Could not reach Ollama at {self.base_url}: {exc}") from exc
+        if not (finished or state.saw_done):
+            raise ProviderError("Ollama stream ended before the reply finished")

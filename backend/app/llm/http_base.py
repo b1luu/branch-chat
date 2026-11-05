@@ -7,6 +7,7 @@ events so each provider only has to know its own event schema.
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -28,11 +29,24 @@ async def raise_for_status(response: httpx.Response, provider: str) -> None:
     raise ProviderError(f"{provider} returned HTTP {response.status_code}: {body}")
 
 
-async def iter_sse_json(response: httpx.Response) -> AsyncIterator[dict[str, Any]]:
+@dataclass
+class StreamState:
+    """What `iter_sse_json` saw, for callers that must tell "finished" from "cut off"."""
+
+    saw_done: bool = False
+
+
+async def iter_sse_json(
+    response: httpx.Response, state: StreamState | None = None
+) -> AsyncIterator[dict[str, Any]]:
     """Yield each `data:` payload as a dict; stop at OpenAI's `[DONE]` sentinel.
 
     `event:` / `id:` / comment lines are ignored: both APIs repeat the event
-    type inside the JSON, so the data line alone is enough.
+    type inside the JSON, so the data line alone is enough. Non-object payloads
+    (a bare string or list) carry nothing either API uses and are skipped.
+
+    The iterator ends the same way whether `[DONE]` arrived or the server just
+    closed the body, so pass a `state` to find out which (`state.saw_done`).
     """
     async for line in response.aiter_lines():
         if not line.startswith("data:"):
@@ -41,6 +55,8 @@ async def iter_sse_json(response: httpx.Response) -> AsyncIterator[dict[str, Any
         if not payload:
             continue
         if payload == "[DONE]":
+            if state is not None:
+                state.saw_done = True
             return
         try:
             event = json.loads(payload)

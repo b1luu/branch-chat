@@ -175,3 +175,7 @@ class AnthropicProvider(LLMProvider):
                         return
         except httpx.HTTPError as exc:
             raise ProviderError(f"Could not reach Anthropic API: {exc}") from exc
+        # Only `message_stop` returns above. Reaching here means the body closed
+        # early (no HTTP error is raised for that), so the text so far is a
+        # fragment and must not be saved as the reply.
+        raise ProviderError("Anthropic stream ended before message_stop")
