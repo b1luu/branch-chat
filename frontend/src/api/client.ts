@@ -4,7 +4,7 @@
  * All paths are relative (`/api/...`): in dev, Vite proxies them to FastAPI; in
  * production the web container serves the app on the same origin as the API.
  */
-import { parseSSE } from "./sse.ts";
+import { parseSSE, type SSEEvent } from "./sse.ts";
 import type { Conversation, ConversationCreate, Message, Note, ReplyCreate, Tree } from "./types.ts";
 
 export class ApiError extends Error {
@@ -154,21 +154,69 @@ export async function streamReply(
   if (!res.ok) throw await httpError(res);
   if (!res.body) throw new ApiError(res.status, "Reply stream had no body");
 
-  for await (const { event, data } of parseSSE(res.body)) {
-    const payload: unknown = JSON.parse(data);
+  // A parse failure is held for one step: if the stream then ends, the bad event
+  // was the last, cut-off one (parseSSE emits an unterminated final block), so
+  // it's reported as an early end; if more events follow, the data was garbage.
+  let malformed = false;
+  for await (const { event, data } of readEvents(res.body, signal)) {
+    if (malformed) throw new ApiError(res.status, MALFORMED_STREAM_MESSAGE);
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      malformed = true;
+      continue;
+    }
     switch (event) {
       case "user":
-        handlers.onUser?.(payload as Message);
+        if (!isMessage(payload)) throw new ApiError(res.status, MALFORMED_STREAM_MESSAGE);
+        handlers.onUser?.(payload);
         break;
       case "token":
-        handlers.onToken?.((payload as { text: string }).text);
+        if (!hasString(payload, "text")) throw new ApiError(res.status, MALFORMED_STREAM_MESSAGE);
+        handlers.onToken?.(payload.text);
         break;
       case "done":
-        return payload as Message;
+        if (!isMessage(payload)) throw new ApiError(res.status, MALFORMED_STREAM_MESSAGE);
+        return payload;
       case "error":
-        throw new ApiError(res.status, (payload as { detail: string }).detail);
+        throw new ApiError(res.status, hasString(payload, "detail") ? payload.detail : "The reply failed");
       // Unknown events are ignored so the server can add new ones safely.
     }
   }
   throw new ApiError(res.status, "Reply stream ended before the assistant finished");
+}
+
+export const MALFORMED_STREAM_MESSAGE = "The server sent a malformed reply stream. Please retry.";
+export const STREAM_LOST_MESSAGE = "The connection was lost while the reply was streaming. Please retry.";
+
+function hasString<K extends string>(value: unknown, key: K): value is Record<K, string> {
+  return typeof value === "object" && value !== null && typeof (value as Record<string, unknown>)[key] === "string";
+}
+
+/** Enough of a `Message` to append it to the path and use its id as the next leaf. */
+function isMessage(value: unknown): value is Message {
+  return hasString(value, "id") && hasString(value, "role") && hasString(value, "content");
+}
+
+/**
+ * `parseSSE`, but a body read that fails mid-stream (socket reset, Wi-Fi drop,
+ * proxy timeout) becomes an `ApiError` instead of the browser's bare
+ * "network error" TypeError. Aborts pass through untouched, like `send`.
+ * Only the read is wrapped, so errors thrown by the caller's handlers between
+ * events are never mislabelled as connection problems.
+ */
+async function* readEvents(body: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<SSEEvent> {
+  const events = parseSSE(body);
+  for (;;) {
+    let next: IteratorResult<SSEEvent>;
+    try {
+      next = await events.next();
+    } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) throw err;
+      throw new ApiError(NETWORK_ERROR, STREAM_LOST_MESSAGE);
+    }
+    if (next.done) return;
+    yield next.value;
+  }
 }

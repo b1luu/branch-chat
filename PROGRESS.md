@@ -349,3 +349,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (305 passed, 13 skipped), frontend lint + 181 tests + build (no frontend change).
 - No new deps (coverage via a temporary, unsaved `pytest-cov`).
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-06 UTC — Q21 (post-backlog bug pass: reply stream that drops or arrives garbled)
+- Status: green
+- Done: **Q21** `streamReply` trusted the body completely. (1) If the connection died mid-reply (Wi-Fi drop, proxy timeout), the body read rejected with the browser's bare `TypeError` ("network error" in Chrome, "Error in body stream" in Firefox) and that text was shown as the send error. Now a failed read becomes `ApiError(NETWORK_ERROR, "The connection was lost while the reply was streaming. Please retry.")`; aborts still pass through untouched. (2) Unparsable `data` threw a raw `SyntaxError`; payloads of the wrong shape were used as-is (a `token` without `text` appended the string "undefined"; a `done` without `id` became the next leaf). Now each event's payload is checked (`user`/`done` need id/role/content, `token` needs string `text`) and garbage raises a clear "malformed reply stream" `ApiError`. (3) A stream cut off inside its last event (parseSSE emits an unterminated final block) gave a JSON error; it now reads as "Reply stream ended before the assistant finished", same as any early end.
+- Tests (`stream.test.ts`, +5): mid-stream read failure → `ApiError` with status 0 after the partial tokens were delivered; abort during the stream still an `AbortError`; malformed data mid-stream; `done` cut off mid-JSON; wrong-shaped `token`/`done`/`error` payloads. 4 failed before the fix (the abort one pins existing behaviour).
+- Decisions: only the body *read* is wrapped (a small `readEvents` generator), so an exception thrown by a UI handler is never relabelled as a connection problem. A parse failure is held for one event: if the stream then ends it was a truncation, if more events follow it's garbage. Kept parseSSE's "emit an unterminated final block" behaviour (pinned by `sse.test.ts`) and handled truncation in the client instead.
+- Checks: backend ruff + pytest (305 passed, 13 skipped, no backend change), frontend lint + 186 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
