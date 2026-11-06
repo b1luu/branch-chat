@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { mergeBranch } from "../api/client.ts";
 import type { TreeNode } from "../api/types.ts";
 import { branchSegments, branchTip } from "../tree.ts";
@@ -29,11 +29,22 @@ function shorten(text: string): string {
  * "Merge back" (D1) summarizes this branch into a note on its fork origin, then
  * goes back the same way so the note is visible in the parent branch.
  * App remounts this per leaf (`key`), so merge state never leaks across branches.
+ * A merge keeps running if the user navigates away mid-request (the note is still
+ * saved), but its "go back" is dropped: the user already chose where to be, and
+ * yanking them to the old parent branch seconds later would be disorienting.
  */
 export default function BranchNav({ nodes, activeLeaf, onSelect }: BranchNavProps) {
   const segments = useMemo(() => branchSegments(nodes, activeLeaf), [nodes, activeLeaf]);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
+  // False once this instance unmounts (i.e. the active leaf changed); see `merge`.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   if (segments.length < 2) return null;
 
   // Crumb i (all but the last) targets the tip of branch i, continuing past the
@@ -49,11 +60,11 @@ export default function BranchNav({ nodes, activeLeaf, onSelect }: BranchNavProp
     setMergeError(null);
     try {
       await mergeBranch(activeLeaf);
-      onSelect(backTarget);
+      if (mounted.current) onSelect(backTarget);
     } catch (err) {
-      setMergeError(err instanceof Error ? err.message : String(err));
+      if (mounted.current) setMergeError(err instanceof Error ? err.message : String(err));
     } finally {
-      setMerging(false);
+      if (mounted.current) setMerging(false);
     }
   }
 

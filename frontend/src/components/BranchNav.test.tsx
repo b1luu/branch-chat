@@ -135,6 +135,49 @@ describe("BranchNav", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("a merge that finishes after the user navigated away doesn't pull them back", async () => {
+    // App keys BranchNav by the active leaf, so navigating mid-merge unmounts this instance.
+    let resolve: (r: Response) => void = () => {};
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise<Response>((r) => (resolve = r)));
+    vi.stubGlobal("fetch", fetchMock);
+    const onSelect = vi.fn();
+    const errors = vi.spyOn(console, "error");
+    const ui = userEvent.setup();
+    const { unmount } = render(<BranchNav nodes={nodes} activeLeaf="b2" onSelect={onSelect} />);
+
+    await ui.click(screen.getByRole("button", { name: "Merge back" }));
+    expect(fetchCall(fetchMock)[0]).toBe("/api/branches/b2/merge");
+    unmount();
+
+    resolve(jsonResponse({ id: "n1", message_id: "a1", source_leaf_id: "b2", content: "S", created_at: "x" }, 201));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it("a merge that fails after the user navigated away stays quiet", async () => {
+    let resolve: (r: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(() => new Promise<Response>((r) => (resolve = r))));
+    const onSelect = vi.fn();
+    const errors = vi.spyOn(console, "error");
+    const { unmount } = render(<BranchNav nodes={nodes} activeLeaf="b2" onSelect={onSelect} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Merge back" }));
+    unmount();
+    resolve(jsonResponse({ detail: "LLM provider error: timeout" }, 502));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it("a remount for a new leaf starts with no merge in progress", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>(() => new Promise<Response>(() => {})));
+    const { rerender } = render(<BranchNav key="b2" nodes={nodes} activeLeaf="b2" onSelect={vi.fn()} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Merge back" }));
+    expect(screen.getByRole("button", { name: "Merging…" })).toBeDisabled();
+    rerender(<BranchNav key="c1" nodes={nodes} activeLeaf="c1" onSelect={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Merge back" })).toBeEnabled();
+  });
+
   it("offers no merge on the main thread", () => {
     render(<BranchNav nodes={nodes} activeLeaf="a6" onSelect={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Merge back" })).not.toBeInTheDocument();

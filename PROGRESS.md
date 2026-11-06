@@ -366,3 +366,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - No new deps (coverage via a temporary, unsaved `pytest-cov`).
 - Local agent: nothing has been run on the PC yet (LOCAL_TESTS.md only has the setup entry); `python scripts/local_test.py` is ready.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-06 22:50 UTC — Q23 (post-backlog bug pass: merge that yanks you back after you moved on)
+- Status: green
+- Done: **Q23** BranchNav had the weakest frontend branch coverage (82.6%). Found a bug: click "Merge back", then click another node (or a crumb) while the summary is still being generated; when the merge finished, `onSelect(backTarget)` still fired from the unmounted BranchNav and pulled the user back to the old parent branch. BranchNav now tracks whether it's still mounted (App keys it per leaf) and only navigates / sets merge state if so. The merge request itself isn't aborted, so the note is still saved and shows up when the user visits that thread.
+- Tests: `BranchNav.test.tsx` (+3): merge resolving after unmount doesn't call `onSelect`; failing after unmount stays quiet; a remount for a new leaf starts with no merge in progress. `App.test.tsx` (+1): full flow — side branch → Merge back (held) → click another branch → merge finishes → still on the other branch, tree selection unchanged. The two "doesn't navigate" tests failed before the fix.
+- Decisions: don't abort the merge on navigation (user asked for it; the server work is the point), only drop the follow-up navigation. An error from a merge the user left behind is dropped rather than shown in another branch's UI.
+- Checks: backend ruff + pytest (321 passed, 13 skipped, no backend change), frontend lint + 190 tests + build.
+- No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`).
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

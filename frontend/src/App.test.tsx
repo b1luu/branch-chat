@@ -183,6 +183,54 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/branches/b1/merge", expect.objectContaining({ method: "POST" }));
   });
 
+  it("a merge that finishes after the user clicked another node leaves them there (Q23)", async () => {
+    const root = msg({ id: "r1", role: "system", content: "sys" });
+    const u = msg({ id: "u1", parent_id: "r1", content: "hello" });
+    const a = msg({ id: "a1", parent_id: "u1", role: "assistant", content: "main answer" });
+    const u2 = msg({ id: "u2", parent_id: "a1", content: "main follow-up" });
+    const a2 = msg({ id: "a2", parent_id: "u2", role: "assistant", content: "main reply" });
+    const q = msg({ id: "q1", parent_id: "a1", content: "side question" });
+    const b = msg({ id: "b1", parent_id: "q1", role: "assistant", content: "side answer" });
+    const q2 = msg({ id: "q2", parent_id: "a1", content: "other question" });
+    const c = msg({ id: "c1", parent_id: "q2", role: "assistant", content: "other side answer" });
+    const note = { id: "n1", message_id: "a1", source_leaf_id: "b1", content: "Side said: yes.", created_at: b.created_at };
+    let finishMerge: () => void = () => {};
+    routeFetch({
+      "GET /api/conversations": () =>
+        jsonResponse([{ id: "c1", title: "First", created_at: root.created_at, root_message_id: "r1" }]),
+      "GET /api/conversations/c1/tree": () =>
+        jsonResponse({ conversation_id: "c1", nodes: [root, u, a, u2, a2, q, b, q2, c].map(treeNode) }),
+      "GET /api/messages/c1/path": () => jsonResponse([root, u, a, q2, c]),
+      "GET /api/messages/b1/path": () => jsonResponse([root, u, a, q, b]),
+      "GET /api/messages/a2/path": () => jsonResponse([root, u, { ...a, notes: [note] }, u2, a2]),
+    });
+    // The merge request is held open until the test releases it.
+    const routed = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>((input, init) =>
+        String(input) === "/api/branches/b1/merge"
+          ? new Promise<Response>((r) => (finishMerge = () => r(jsonResponse(note, 201))))
+          : routed(input, init),
+      ),
+    );
+    const ui = userEvent.setup();
+    render(<App />);
+    await ui.click(await screen.findByRole("button", { name: "First" }));
+    const chatPane = () => screen.getByRole("region", { name: "Chat" });
+    await ui.click(await screen.findByRole("button", { name: "AI: side answer" }));
+    await waitFor(() => expect(within(chatPane()).getByText("side answer")).toBeInTheDocument());
+
+    await ui.click(screen.getByRole("button", { name: "Merge back" }));
+    await ui.click(screen.getByRole("button", { name: "AI: other side answer" }));
+    await waitFor(() => expect(within(chatPane()).getByText("other side answer")).toBeInTheDocument());
+
+    finishMerge();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(within(chatPane()).getByText("other side answer")).toBeInTheDocument();
+    expect(screen.getByRole("treeitem", { selected: true })).toHaveTextContent("AI: other side answer");
+  });
+
   describe("a reply that finishes after navigating away (Q4)", () => {
     const root = msg({ id: "r1", role: "system", content: "sys" });
     const u = msg({ id: "u1", parent_id: "r1", content: "hello" });
