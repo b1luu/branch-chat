@@ -357,4 +357,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Decisions: only the body *read* is wrapped (a small `readEvents` generator), so an exception thrown by a UI handler is never relabelled as a connection problem. A parse failure is held for one event: if the stream then ends it was a truncation, if more events follow it's garbage. Kept parseSSE's "emit an unterminated final block" behaviour (pinned by `sse.test.ts`) and handled truncation in the client instead.
 - Checks: backend ruff + pytest (305 passed, 13 skipped, no backend change), frontend lint + 186 tests + build.
 - No new deps.
+## 2026-11-06 19:17 UTC — Q22 (post-backlog: local test runner preflight)
+- Status: green
+- Done: **Q22** `scripts/local_test.py` only checked that Ollama answered. If the model wasn't pulled, every `ollama` test would fail with a 404 and get logged as N failures, which the cloud sprint (step 2b) would then try to "fix" in app code. Now a preflight reads `/models`: not reachable or model missing → a single "not run" entry (e.g. "model `llama3.1:8b` not pulled (run `ollama pull llama3.1:8b`)") and pytest isn't started. Also: failure output containing ``` (e.g. a model reply with a code block in an assertion message) closed the report's code fence early; the fence is now longer than any backtick run in the body.
+- Tests (`test_local_test_script.py`, +15): `/models` parsing (ids, unreachable, bad JSON, non-object, no `data`), `model_available` (`llama3.1` == `llama3.1:latest`, different tags don't match, registry host:port names), preflight reasons, `main --no-push` with a missing model writes "not run" and never calls pytest, backtick-safe fence, plain fence unchanged. All 15 failed before the change (`urlopen` monkeypatched; no network).
+- Decisions: untagged names compare as `:latest` (Ollama's own rule); the tag check looks only after the last `/` so `host:5000/model` isn't mistaken for tagged. A missing model exits 0 like "Ollama down": it's a setup issue on the PC, not a test failure.
+- Checks: backend ruff + pytest (321 passed, 13 skipped), frontend lint + 186 tests + build (no frontend change; rerun after rebasing on the concurrent Q21).
+- No new deps (coverage via a temporary, unsaved `pytest-cov`).
+- Local agent: nothing has been run on the PC yet (LOCAL_TESTS.md only has the setup entry); `python scripts/local_test.py` is ready.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the real-model (Ollama) tests on Brandon's PC and report to LOCAL_TESTS.md.
 
-Steps: `git pull` → `pytest -m ollama` in backend/ with LLM_PROVIDER=ollama →
+Steps: `git pull` → check Ollama is up and the model is pulled → `pytest -m ollama` in backend/ with LLM_PROVIDER=ollama →
 append an entry to LOCAL_TESTS.md → commit only that file → rebase on
 origin/main → push. `--no-push` does everything except commit and push.
 
@@ -97,9 +97,10 @@ def format_entry(run: TestRun, sha: str, model: str, now: datetime) -> str:
         for f in run.failures:
             lines.append(f"  - {f.name}:")
             body = f.text.strip().splitlines()[:MAX_FAILURE_LINES] or ["(no output)"]
-            lines.append("    ```")
+            fence = _fence(body)
+            lines.append(f"    {fence}")
             lines.extend(f"    {line}" for line in body)
-            lines.append("    ```")
+            lines.append(f"    {fence}")
     else:
         lines.append("- Failures: none")
     return "\n".join(lines) + "\n"
@@ -123,6 +124,41 @@ def commit_message(run: TestRun, sha: str) -> str:
     return f"local tests: {run.passed}/{run.total} on {sha}"
 
 
+def _with_tag(name: str) -> str:
+    """Ollama treats an untagged name as `:latest`, so compare on that form."""
+    return name if ":" in name.rsplit("/", 1)[-1] else f"{name}:latest"
+
+
+def model_available(model: str, served: list[str]) -> bool:
+    """True if `model` is among the ids Ollama listed (`llama3.1` == `llama3.1:latest`)."""
+    want = _with_tag(model)
+    return any(_with_tag(s) == want for s in served)
+
+
+def preflight(base_url: str, model: str, served: list[str] | None) -> str | None:
+    """Why the real-model tests can't run, or None if they can.
+
+    A missing model would otherwise show up as every test failing with a 404,
+    and the cloud agent would treat those as app bugs to fix.
+    """
+    if served is None:
+        return f"Ollama not reachable at {base_url}"
+    if not model_available(model, served):
+        return f"model `{model}` not pulled (run `ollama pull {model}`)"
+    return None
+
+
+def _fence(body: list[str]) -> str:
+    """A code fence longer than any backtick run in the body, so it can't close early."""
+    longest = 0
+    for line in body:
+        run = 0
+        for ch in line:
+            run = run + 1 if ch == "`" else 0
+            longest = max(longest, run)
+    return "`" * max(3, longest + 1)
+
+
 # ----------------------------------------------------------------- side effects
 
 
@@ -140,13 +176,19 @@ def git(*args: str, check: bool = True) -> str:
     return out.stdout.strip()
 
 
-def ollama_reachable(base_url: str) -> bool:
+def ollama_models(base_url: str) -> list[str] | None:
+    """Model ids Ollama serves (`GET {base_url}/models`), or None if unreachable."""
     try:
         with urllib.request.urlopen(f"{base_url}/models", timeout=2) as r:
-            json.loads(r.read())
-            return r.status == 200
+            body = json.loads(r.read())
     except (urllib.error.URLError, OSError, ValueError):
-        return False
+        return None
+    if not isinstance(body, dict):
+        return None
+    data = body.get("data")
+    if not isinstance(data, list):
+        return []
+    return [str(m["id"]) for m in data if isinstance(m, dict) and "id" in m]
 
 
 def run_pytest(base_url: str, model: str) -> TestRun:
@@ -174,10 +216,8 @@ def main(argv: list[str] | None = None) -> int:
     git("pull", "--rebase", "--autostash")
     sha = git("rev-parse", "--short", "HEAD")
 
-    if ollama_reachable(base_url):
-        run = run_pytest(base_url, model)
-    else:
-        run = TestRun(note=f"Ollama not reachable at {base_url}")
+    blocker = preflight(base_url, model, ollama_models(base_url))
+    run = TestRun(note=blocker) if blocker else run_pytest(base_url, model)
 
     entry = format_entry(run, sha, model, datetime.now(UTC))
     append_entry(REPORT, entry)
