@@ -393,3 +393,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (321 passed, 13 skipped, no backend change), frontend lint + 197 tests + build.
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-07 22:56 UTC — Q26 (post-backlog bug pass: NUL characters crash Postgres saves and the tree)
+- Status: green
+- Done: **Q26** nothing stripped U+0000. JSON allows `"\u0000"` (pasted from a binary file/terminal) and a model can emit one, but Postgres `text` rejects NUL (`psycopg.DataError`): a reply/quote/title/system prompt with one was a **500**, and a model reply with one streamed fine and then failed to save ("Could not save the reply"; merge summaries likewise). On SQLite it was stored, and a stored `\x000\x00` collided with `markdown_to_text`'s inline-code placeholders → `IndexError` → `GET /tree` 500. New `clean_text` (drop NUL + replace lone surrogates) used by the request validators (so `"\u0000"` alone counts as blank → 422; a NUL-only quote → no quote) and on provider output in `chat.stream_reply` and `merge.merge_branch`; `markdown_to_text`/`make_preview` drop NUL first so pre-existing SQLite rows can't crash `/tree`.
+- Tests: new `test_nul_chars.py` (+30 with Postgres, +20 SQLite-only): request fields (content, quote, title, system_prompt) saved without NUL; NUL-only → 422 / no quote; model reply and merge summary with NULs saved clean and previewed; legacy NUL rows in `markdown_to_text` and `/tree`; `clean_text` cases. 28 of 30 failed before the fix, including the Postgres DataError and the IndexError.
+- Decisions: remove NUL silently rather than 422 it: it's invisible, a user can't see what to fix, and it carries no meaning in chat text. Kept `scrub_surrogates` as is (it also scrubs the 422 echo, where NUL is fine in JSON). Endpoint tests use an engine fixture parametrized like `any_db`, so they also run on Postgres when `TEST_POSTGRES_URL` is set.
+- Checks: backend ruff + pytest (341 passed, 23 skipped on SQLite; 359 passed, 5 skipped against a local Postgres 16 with `TEST_POSTGRES_URL`), frontend lint + 197 tests + build (no frontend change).
+- No new deps (coverage via temporary, unsaved `pytest-cov` / `@vitest/coverage-v8`; backend 99%, frontend weakest branches are defensive fallbacks).
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

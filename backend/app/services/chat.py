@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import MessageOut
-from app.api.validation import scrub_surrogates
+from app.api.validation import clean_text
 from app.db import repository
 from app.db.errors import ConflictError
 from app.db.models import Message, Note, Role
@@ -153,7 +153,7 @@ async def stream_reply(
             logger.exception("LLM provider %s failed", provider.name)
             yield sse("error", {"detail": f"LLM provider error: {exc}"})
             return
-        content = scrub_surrogates("".join(chunks))
+        content = clean_text("".join(chunks))
         if not content.strip():
             # Treat a blank answer like a failure: a blank assistant node would be a
             # dead bubble, and Anthropic rejects any later prompt containing an

@@ -29,6 +29,18 @@ def scrub_surrogates(value: Any) -> Any:
     return value
 
 
+def clean_text(value: str) -> str:
+    """Make a string storable: drop NUL characters and replace lone surrogates.
+
+    Postgres `text` columns reject U+0000 outright (psycopg raises DataError,
+    which surfaced as a 500 or an unsaved reply), and NUL is invisible and
+    meaningless in chat text, so it is removed rather than rejected. Applied to
+    every request string that gets stored and to provider output (replies,
+    merge summaries).
+    """
+    return scrub_surrogates(value.replace("\x00", ""))
+
+
 async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
     """Same shape as FastAPI's default 422 (`{"detail": [...]}`), but always encodable."""
     return JSONResponse(

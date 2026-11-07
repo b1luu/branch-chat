@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.validation import scrub_surrogates
+from app.api.validation import clean_text
 from app.db import repository
 from app.db.models import Message, Note, Role
 from app.llm import ChatMessage, LLMProvider
@@ -92,7 +92,7 @@ async def merge_branch(
         logger.exception("LLM provider %s failed while merging %s", provider.name, leaf_id)
         raise MergeError(f"LLM provider error: {exc}") from exc
     # Lone surrogates (half an emoji) can't be stored; see chat.stream_reply.
-    summary = scrub_surrogates("".join(chunks)).strip()
+    summary = clean_text("".join(chunks)).strip()
     if not summary:
         raise MergeError("LLM returned an empty summary")
     note = Note(message_id=origin.id, source_leaf_id=leaf_id, content=summary)

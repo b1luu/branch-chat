@@ -4,12 +4,18 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.api.validation import clean_text
+
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 PREVIEW_CHARS = 80
 
 
 def _not_blank(value: str) -> str:
-    """`min_length=1` alone lets "   " through; a blank turn or title is never useful."""
+    """`min_length=1` alone lets "   " through; a blank turn or title is never useful.
+
+    Also drops NUL characters first (see `clean_text`), so "\\u0000" counts as blank.
+    """
+    value = clean_text(value)
     if not value.strip():
         raise ValueError("must not be blank")
     return value
@@ -46,6 +52,7 @@ class ReplyCreate(BaseModel):
     @classmethod
     def _blank_quote_is_none(cls, value: str | None) -> str | None:
         # An empty highlight means "no quote", not a quote branch about nothing.
+        value = clean_text(value) if value else value
         return value if value and value.strip() else None
 
 

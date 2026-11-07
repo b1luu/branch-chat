@@ -38,7 +38,10 @@ _EM_UNDER = re.compile(r"(?<!\w)_(?=\S)(.+?)(?<=\S)_(?!\w)")
 
 def markdown_to_text(content: str) -> str:
     """Strip common Markdown syntax, keeping the visible text."""
-    text = _FENCE.sub("", content)
+    # NUL marks the inline-code placeholders below, so it must not occur in the
+    # input. New rows never contain it (`clean_text`), but SQLite databases from
+    # before Q26 may, and a stray "\x000\x00" used to crash /tree.
+    text = _FENCE.sub("", content.replace("\x00", ""))
     text = _RULE.sub("", text)
     text = _TABLE_SEP.sub("", text)
     text = _HEADING.sub("", text)
@@ -68,6 +71,6 @@ def make_preview(content: str, role: str, limit: int) -> str:
     Markdown is stripped *before* truncating, so the cap counts visible
     characters and never cuts a `**` pair in half.
     """
-    text = markdown_to_text(content) if role == Role.assistant else content
+    text = markdown_to_text(content) if role == Role.assistant else content.replace("\x00", "")
     flat = " ".join(text.split())
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
