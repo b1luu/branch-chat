@@ -153,4 +153,45 @@ describe("TreeSidebar", () => {
     render(<TreeSidebar conversationId="zz" activeLeaf={null} onSelect={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Conversation not found");
   });
+  it("doesn't show one conversation's load error while another loads (Q25)", async () => {
+    const fetchMock = mockFetch(jsonResponse({ detail: "Database is down" }, 500));
+    fetchMock.mockReturnValueOnce(new Promise<Response>(() => {})); // c2 still loading
+    const { rerender } = render(<TreeSidebar conversationId="c1" activeLeaf="a2" onSelect={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Database is down");
+
+    rerender(<TreeSidebar conversationId="c2" activeLeaf="x1" onSelect={vi.fn()} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading tree");
+  });
+
+  it("drops a failed refresh notice when switching conversation (Q25)", async () => {
+    const other = [node("r2", null, "system", "sys"), node("x1", "r2", "user", "Other chat")];
+    let releaseC2: (r: Response) => void = () => {};
+    const fetchMock = mockFetch(tree(), jsonResponse({ detail: "Refresh broke" }, 500));
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (releaseC2 = resolve)));
+    const { rerender } = render(<TreeSidebar conversationId="c1" activeLeaf="a2" onSelect={vi.fn()} />);
+    await screen.findByRole("tree");
+    rerender(<TreeSidebar conversationId="c1" activeLeaf="a2" onSelect={vi.fn()} refreshKey={1} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Refresh broke");
+
+    rerender(<TreeSidebar conversationId="c2" activeLeaf="x1" onSelect={vi.fn()} refreshKey={0} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading tree");
+
+    releaseC2(jsonResponse({ conversation_id: "c2", nodes: other }));
+    expect(await screen.findByText(/Other chat/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps a conversation's own load error until retry succeeds (Q25)", async () => {
+    mockFetch(jsonResponse({ detail: "Database is down" }, 500), tree());
+    const ui = userEvent.setup();
+    render(<TreeSidebar conversationId="c1" activeLeaf="a2" onSelect={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Database is down");
+    await ui.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("tree")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

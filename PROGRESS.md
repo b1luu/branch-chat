@@ -384,3 +384,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (321 passed, 13 skipped, no backend change), frontend lint + 194 tests + build.
 - No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`).
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-07 19:05 UTC — Q25 (post-backlog bug pass: tree error from the previous conversation)
+- Status: green
+- Done: **Q25** TreeSidebar kept one untagged `error` that was only cleared by a successful fetch or "Try again". Switching conversation after a failed tree load (or a failed refresh) showed the *old* conversation's error, with its retry button, in place of "Loading tree…" for the new one until its fetch landed (forever if it hung). The error is now stored with its conversation id and only shown for that conversation, like the tree itself.
+- Tests (`TreeSidebar.test.tsx`, +3): failed load in c1 → switch to c2 (pending) → loading, no alert; failed refresh in c1 → switch to c2 → no alert while loading or after it loads; a conversation's own error stays until "Try again" succeeds. The first two failed before the fix.
+- Decisions: tag rather than clear on switch, so the same rule as the tree (`current`) applies and there's no extra effect.
+- Checks: backend ruff + pytest (321 passed, 13 skipped, no backend change), frontend lint + 197 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

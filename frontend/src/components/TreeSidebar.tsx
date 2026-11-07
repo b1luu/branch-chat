@@ -37,12 +37,14 @@ export default function TreeSidebar({
 }: TreeSidebarProps) {
   // Tagged with the conversation and refreshKey it was fetched for, so a stale one triggers a refetch.
   const [tree, setTree] = useState<{ conversationId: string; refreshKey: number; nodes: TreeNode[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Tagged with its conversation: switching conversation must not show the old one's failure.
+  const [failure, setFailure] = useState<{ conversationId: string; message: string } | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // Bumped by "Try again" to re-run a failed fetch.
   const [attempt, setAttempt] = useState(0);
 
   const current = tree?.conversationId === conversationId ? tree : null;
+  const error = failure?.conversationId === conversationId ? failure.message : null;
   const needsFetch =
     current === null ||
     current.refreshKey !== refreshKey ||
@@ -54,12 +56,12 @@ export default function TreeSidebar({
     getTree(conversationId)
       .then((t) => {
         if (cancelled) return;
-        setError(null);
+        setFailure(null);
         setTree({ conversationId, refreshKey, nodes: t.nodes });
         onTreeChange?.(t.nodes);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setFailure({ conversationId, message: err instanceof Error ? err.message : String(err) });
       });
     return () => {
       cancelled = true;
@@ -82,7 +84,7 @@ export default function TreeSidebar({
   }
 
   const retry = () => {
-    setError(null);
+    setFailure(null);
     setAttempt((n) => n + 1);
   };
   if (error && !current) return <ErrorNotice title="Couldn't load the tree" message={error} onRetry={retry} />;
