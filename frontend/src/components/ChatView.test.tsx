@@ -540,3 +540,70 @@ describe("ChatView with a question as the active leaf (Q8)", () => {
     expect(screen.getByRole("textbox", { name: "Message" })).not.toHaveAttribute("aria-describedby");
   });
 });
+
+describe("ChatView — returning to the loaded leaf before another path loads (Q24)", () => {
+  const ub = msg({ id: "ub", parent_id: "root", content: "Other branch question" });
+  const ab = msg({ id: "ab", parent_id: "ub", role: "assistant", content: "Other branch answer" });
+
+  it("shows the original path again instead of loading forever", async () => {
+    const fetchMock = mockFetch(jsonResponse([root, u1, a1]));
+    fetchMock.mockReturnValueOnce(new Promise<Response>(() => {})); // "ab" never answers
+    fetchMock.mockResolvedValueOnce(jsonResponse([root, u1, a1]));
+    const { rerender } = render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+
+    rerender(<ChatView leafId="ab" onLeafChange={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading");
+    rerender(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+
+    expect(await screen.findByText("What is a CTE?")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(fetchCall(fetchMock, 2)[0]).toBe("/api/messages/a1/path");
+  });
+
+  it("drops the other path's load error when going back", async () => {
+    mockFetch(
+      jsonResponse([root, u1, a1]),
+      jsonResponse({ detail: "Message not found" }, 404),
+      jsonResponse([root, u1, a1]),
+    );
+    const { rerender } = render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+
+    rerender(<ChatView leafId="ab" onLeafChange={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Message not found");
+    rerender(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+
+    expect(await screen.findByText("What is a CTE?")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("returns to a leaf it created itself after a detour", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse([root, u1, a1]),
+      sseResponse([sseEvent("user", u2), sseEvent("token", { text: "ok" }), sseEvent("done", a2)]),
+    );
+    fetchMock.mockReturnValueOnce(new Promise<Response>(() => {})); // "ab" never answers
+    fetchMock.mockResolvedValueOnce(jsonResponse([root, u1, a1, u2, a2]));
+    const ui = userEvent.setup();
+    const { rerender } = render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+    await ui.type(screen.getByRole("textbox", { name: "Message" }), "Recursive?{Enter}");
+    await screen.findByText("Yes, it can recurse.");
+    rerender(<ChatView leafId="a2" onLeafChange={vi.fn()} />);
+
+    rerender(<ChatView leafId="ab" onLeafChange={vi.fn()} />);
+    rerender(<ChatView leafId="a2" onLeafChange={vi.fn()} />);
+
+    expect(await screen.findByText("Yes, it can recurse.")).toBeInTheDocument();
+    expect(fetchCall(fetchMock, 3)[0]).toBe("/api/messages/a2/path");
+  });
+
+  it("still loads the other path when it does answer", async () => {
+    mockFetch(jsonResponse([root, u1, a1]), jsonResponse([root, ub, ab]));
+    const { rerender } = render(<ChatView leafId="a1" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+    rerender(<ChatView leafId="ab" onLeafChange={vi.fn()} />);
+    expect(await screen.findByText("Other branch answer")).toBeInTheDocument();
+  });
+});

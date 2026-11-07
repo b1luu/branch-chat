@@ -79,7 +79,8 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
   // Highlight the user chose to ask about; the next send branches from it.
   const [quote, setQuote] = useState<QuoteTarget | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  // Leaf ids we produced locally, so the effect below can skip a redundant fetch.
+  // The leaf whose path is currently shown (loaded or produced locally by a
+  // send), so the effect below can skip a redundant fetch. Null while loading.
   const knownLeaf = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   /**
@@ -94,6 +95,10 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
 
   useEffect(() => {
     if (knownLeaf.current === leafId) return;
+    // From here on the shown path is cleared, so no leaf is "known" until this
+    // fetch lands. Otherwise going A → B → A before B loads would hit the skip
+    // above for A and leave the view stuck on B's loading state (or its error).
+    knownLeaf.current = null;
     let cancelled = false;
     activeSend.current = null; // detach any in-flight reply (see `activeSend`)
     setPending(null);

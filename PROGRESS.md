@@ -375,3 +375,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (321 passed, 13 skipped, no backend change), frontend lint + 190 tests + build.
 - No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`).
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-07 18:55 UTC — Q24 (post-backlog bug pass: chat stuck loading after a quick back-and-forth)
+- Status: green
+- Done: **Q24** ChatView skips the path fetch when `leafId` equals `knownLeaf` (the leaf it last loaded or created), but starting a fetch for another leaf cleared the shown path without clearing `knownLeaf`. So A (loaded) → click B → click A again before B's path arrived hit the skip: B's fetch was cancelled, nothing refetched A, and the chat sat on "Loading messages…" forever. Same if B's load failed: going back to A left B's error up, and "Try again" hit the skip too. Also after a detour from a leaf created by a send. Fix: `knownLeaf` is reset to null whenever the effect clears the view, so it always means "the path currently shown".
+- Tests (`ChatView.test.tsx`, +4): back to A while B's fetch is still pending → A reloads (3rd fetch is A's path); back to A after B 404s → A shown, no stale alert; detour from a send-created leaf and back → reloads it; B still loads normally. The first three failed before the fix.
+- Decisions: refetch on return rather than caching the old path: the tree may have changed meanwhile (background replies, merges), and the extra GET is cheap.
+- Checks: backend ruff + pytest (321 passed, 13 skipped, no backend change), frontend lint + 194 tests + build.
+- No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`).
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
