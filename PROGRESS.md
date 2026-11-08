@@ -402,3 +402,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (341 passed, 23 skipped on SQLite; 359 passed, 5 skipped against a local Postgres 16 with `TEST_POSTGRES_URL`), frontend lint + 197 tests + build (no frontend change).
 - No new deps (coverage via temporary, unsaved `pytest-cov` / `@vitest/coverage-v8`; backend 99%, frontend weakest branches are defensive fallbacks).
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-08 19:51 UTC — Q27 (post-backlog bug pass: merging a long side branch overflows the summarizer)
+- Status: green
+- Done: **Q27** `merge.build_summary_prompt` clipped each turn to 4k chars but put *every* turn of the side branch into the summarizer prompt. A long side discussion (say 70 turns) produced a ~280k-char prompt, past the 60k-token context budget the reply path respects: on Anthropic a context-length 400 → merge 502, on Ollama silent front-truncation that drops the side question. Now the transcript is capped (`transcript_chars_for(CONTEXT_TOKEN_BUDGET, MERGE_MAX_TOKENS)`, floor 4k chars): the first turn (what was asked) and the last (what was concluded) are always kept, then as many of the most recent turns as fit, with "[… N earlier turns of the side discussion omitted …]" in between. The route passes `CONTEXT_TOKEN_BUDGET` through. README merge paragraph updated.
+- Tests: new `test_merge_long_branch.py` (+6): 40-turn branch with a 3k-token budget stays under the cap and keeps the side question, the latest turn and the omitted marker; short branch unchanged; 70×4k-char branch bounded under the default budget; `_fit_turns` keeps a contiguous recent tail and the right count; first/last never dropped; cap floor. The endpoint tests failed before the fix.
+- Decisions: reuse D2's budget and ~4 chars/token estimate rather than a new env var. Middle turns are dropped rather than summarized recursively: the note only needs the question and the conclusion, and one LLM call keeps merge latency predictable.
+- Checks: backend ruff + pytest (347 passed, 23 skipped), frontend lint + 197 tests + build (no frontend change).
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

@@ -88,7 +88,9 @@ async def merge_branch(leaf_id: str, db: DB, llm: LLM, response: Response) -> No
     the main thread, 502 if the LLM fails.
     """
     try:
-        note, created = await merge.merge_branch(db, llm, leaf_id, merge.merge_max_tokens())
+        note, created = await merge.merge_branch(
+            db, llm, leaf_id, merge.merge_max_tokens(), budget.context_budget_from_env()
+        )
     except merge.MergeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
     if not created:
