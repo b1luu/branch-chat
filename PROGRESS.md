@@ -411,3 +411,13 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (347 passed, 23 skipped), frontend lint + 197 tests + build (no frontend change).
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-08 22:52 UTC — Q28 (post-backlog bug pass: unreadable 2xx bodies showed a raw SyntaxError)
+- Status: green
+- Done: **Q28** the JSON client did `await res.json()` on every 2xx. If something other than the API answered `/api/...` with a 200 (an SPA host's `index.html` fallback when the frontend is deployed without the API behind `/api`, a captive portal page), the user saw the browser's raw "Unexpected token '<', "<!doctype "... is not valid JSON" as the error; an empty/truncated body did the same, and a connection dropped mid-body showed a bare "network error". New `readJson` reads the body first (failure → `ApiError(NETWORK_ERROR, "The connection was lost while loading…")`), then parses it (failure → `ApiError(status, "The server sent a response the app couldn't read. Check that the API is running and reachable at /api.")`).
+- Tests: `client.test.ts` (+4): 200 HTML page, empty and truncated 201 bodies, connection lost mid-body, JSON without a content type still parses. `hardening.test.tsx` (+1): App shows the readable message in the conversation-list alert, not "Unexpected token". 4 failed before the fix (the content-type one pins existing behaviour).
+- Decisions: parse by content, not by `Content-Type`, so a backend/proxy that omits the header keeps working. Left `streamReply` alone: an HTML 200 there already ends as an `ApiError` ("Reply stream ended…") rather than a raw exception.
+- Checks: backend ruff + pytest (347 passed, 23 skipped, no backend change), frontend lint + 202 tests + build.
+- No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`).
+- Local agent: still no real-model run logged in LOCAL_TESTS.md; `python scripts/local_test.py` on the PC is ready whenever.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

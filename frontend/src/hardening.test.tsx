@@ -157,6 +157,15 @@ describe("App error and loading states", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Can't reach the server");
   });
 
+  it("explains an HTML page served in place of the API instead of a JSON SyntaxError", async () => {
+    mockFetch(new Response("<!doctype html><title>app</title>", { status: 200, headers: { "Content-Type": "text/html" } }));
+    render(<App />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load conversations");
+    expect(alert).toHaveTextContent("reachable at /api");
+    expect(alert).not.toHaveTextContent("Unexpected token");
+  });
+
   it("explains the empty state", async () => {
     mockFetch(jsonResponse([]));
     render(<App />);

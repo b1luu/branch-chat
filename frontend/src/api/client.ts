@@ -97,7 +97,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}) },
   });
   if (!res.ok) throw await httpError(res);
-  return (await res.json()) as T;
+  return readJson<T>(res);
+}
+
+export const UNREADABLE_RESPONSE_MESSAGE =
+  "The server sent a response the app couldn't read. Check that the API is running and reachable at /api.";
+export const RESPONSE_LOST_MESSAGE = "The connection was lost while loading. Please retry.";
+
+/**
+ * Parse a 2xx body as JSON, with readable errors instead of the browser's.
+ *
+ * A host that serves the SPA without the API behind it (or a captive portal)
+ * answers `/api/...` with `200 text/html`; `res.json()` would then reject with
+ * "Unexpected token '<' ... is not valid JSON", which is what the user saw.
+ * The body is read first and parsed second so a dropped connection mid-body
+ * (a bare `TypeError: network error`) is reported as a network problem rather
+ * than as unreadable data.
+ */
+async function readJson<T>(res: Response): Promise<T> {
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    throw new ApiError(NETWORK_ERROR, RESPONSE_LOST_MESSAGE);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(res.status, UNREADABLE_RESPONSE_MESSAGE);
+  }
 }
 
 export function listConversations(): Promise<Conversation[]> {
