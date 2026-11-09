@@ -430,3 +430,13 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (352 passed, 23 skipped), frontend lint + 202 tests + build (no frontend change).
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-09 22:48 UTC — Q30 (post-backlog bug pass: "Ask about this" missing after a triple-click)
+- Status: green
+- Done: **Q30** `selectionInMessage` required both selection ends inside one message's `.content`. Real browsers often end a selection *just past* the visible highlight: a triple-click on a paragraph (Chrome ends it at offset 0 of the next block), a drag released below the last line (ends in the composer), or a backwards drag that starts at the very end of the previous message. In all of those the highlight is entirely inside one assistant reply, but "Ask about this" never appeared. Now the range's start/end each nominate a candidate message, and a candidate is accepted when the part of the range outside it is whitespace only. Element-level boundaries (`(li, 0)`) resolve to the child they point at.
+- Tests: `selection.test.ts` (+8): triple-click ending at the next message, offset 0 of the next message's text, overshoot into the composer, backwards drag from the previous message's end, whole bubble selected at element level; still rejected: one real character of the next message, a whole-bubble selection that includes the quote block, wrong role. `ChatView.test.tsx` (+1): triple-click shape shows the button in that bubble. The 6 "accepts" tests failed before the fix.
+- Decisions: whitespace-only spill is the rule (not "ignore the end boundary"), so a drag that really picks up a neighbour's text is still rejected and the quote always refers to one message. The quote text is still `selection.toString().trim()`, so the spill (a newline) never reaches the stored quote.
+- Checks: backend ruff + pytest (352 passed, 23 skipped, no backend change), frontend lint + 211 tests + build.
+- No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`; backend 99%, frontend 97% statements).
+- Local agent: still no real-model run in LOCAL_TESTS.md; `python scripts/local_test.py` on the PC is ready.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

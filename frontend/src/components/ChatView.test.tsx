@@ -200,6 +200,26 @@ describe("ChatView — Ask about this", () => {
     expect(screen.queryByRole("button", { name: "Ask about this" })).not.toBeInTheDocument();
   });
 
+  it("offers the button after a triple-click whose selection ends in the next message (Q30)", async () => {
+    mockFetch(jsonResponse([root, u1, a1, u2, a2]));
+    render(<ChatView leafId="a2" onLeafChange={vi.fn()} />);
+    await screen.findByText("What is a CTE?");
+
+    // Chrome reports a triple-clicked paragraph as ending at offset 0 of the next block.
+    const answer = screen.getByText("A common table expression.");
+    const bubble = answer.closest("li");
+    const next = bubble?.nextElementSibling;
+    if (!bubble || !next) throw new Error("bubbles not found");
+    const range = document.createRange();
+    range.setStart(answer.firstChild ?? answer, 0);
+    range.setEnd(next, 0);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.mouseUp(bubble);
+
+    expect(within(bubble).getByRole("button", { name: "Ask about this" })).toBeInTheDocument();
+  });
+
   it("creates a quote branch from the highlighted message, not the leaf", async () => {
     const stream = controlledSSE();
     const fetchMock = mockFetch(jsonResponse([root, u1, a1, u2, a2]), stream.response);
