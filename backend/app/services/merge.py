@@ -135,9 +135,13 @@ async def merge_branch(
     if existing is not None:
         return existing, False
     origin, branch = path[start - 1], path[start:]
+    origin_id = origin.id
     prompt = build_summary_prompt(
         origin, branch, max_chars=transcript_chars_for(context_budget, max_tokens)
     )
+    # End the read transaction so no pooled connection is held while the
+    # summarizer runs (Q29); nothing is pending, so this commit writes nothing.
+    db.commit()
     try:
         chunks = [c async for c in provider.stream(prompt, max_tokens=max_tokens)]
     except Exception as exc:
@@ -147,7 +151,7 @@ async def merge_branch(
     summary = clean_text("".join(chunks)).strip()
     if not summary:
         raise MergeError("LLM returned an empty summary")
-    note = Note(message_id=origin.id, source_leaf_id=leaf_id, content=summary)
+    note = Note(message_id=origin_id, source_leaf_id=leaf_id, content=summary)
     db.add(note)
     try:
         db.commit()

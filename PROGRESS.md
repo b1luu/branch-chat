@@ -421,3 +421,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`).
 - Local agent: still no real-model run logged in LOCAL_TESTS.md; `python scripts/local_test.py` on the PC is ready whenever.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-09 19:05 UTC — Q29 (post-backlog bug pass: DB connections held while the model generates)
+- Status: green
+- Done: **Q29** `chat.stream_reply` opened its session before building the prompt and kept it until the reply was saved, so the connection used for the path query stayed checked out (on Postgres, "idle in transaction") for the entire generation, including the D2 ancestor-summary call. With SQLAlchemy's default pool (5 + 10 overflow), ~15 concurrent replies starved every other request, which then failed after the 30 s pool timeout. Worse, a retry that reused a failed user turn (no commit) left the *request* session's read transaction open for the whole stream, so on a 1-connection pool the reply deadlocked against itself. Merge back held the request session's read transaction during the summarizer call too. Now: the path loads in a short session that closes before any LLM call, the reply is saved in a second short session, the reply route closes its request session before streaming, and `merge_branch` ends its read transaction before summarizing. A DB failure while loading the path now ends the stream with an `error` event instead of stopping after `user`.
+- Tests: new `test_db_connection_during_llm.py` (+5) on a 1-connection pool with a provider that checks, mid-generation, that the pool is free and another session can query: normal replies, orphan-reuse retry (deadlocked before), D2 summary calls, merge, and the path-load error event. All 5 failed before the fix.
+- Decisions: two short sessions rather than one long one; the prompt is plain data once built, so nothing needs a live session during streaming. `merge_branch` uses a no-op `commit()` (not `rollback()`) to end the transaction so the loaded rows aren't expired.
+- Checks: backend ruff + pytest (352 passed, 23 skipped), frontend lint + 202 tests + build (no frontend change).
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

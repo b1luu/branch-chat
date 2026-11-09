@@ -109,6 +109,10 @@ def reply(
     starts, so errors that need a status code happen before the 200.
     """
     user_msg = chat.create_user_node(db, message_id, body.content, body.quote)
+    # Release the request's connection now: the dependency only closes this
+    # session after the whole stream, and a reused failed turn (no commit) would
+    # otherwise keep its read transaction open while the model runs (Q29).
+    db.close()
     return StreamingResponse(
         chat.stream_reply(
             request.app.state.session_factory,

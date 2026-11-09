@@ -125,8 +125,9 @@ async def stream_reply(
 ) -> AsyncIterator[str]:
     """SSE body for one reply: `user`, then `token`*, then `done` (or `error`).
 
-    Uses its own DB session because the response body runs after the request
-    handler returns. The assistant node is written only once the stream
+    Uses its own DB sessions because the response body runs after the request
+    handler returns: one to load the path and one to save the reply, both
+    closed before/after the model call so no connection waits on the LLM (Q29). The assistant node is written only once the stream
     completes, so a failed or abandoned generation leaves no half-written reply;
     an empty (or whitespace-only) answer is reported as `error` too.
     Saving the reply is guarded as well: if the commit fails, the client gets an
@@ -140,40 +141,55 @@ async def stream_reply(
     one summary message first; nothing about that is persisted to the tree.
     """
     yield sse("user", MessageOut.model_validate(user_msg).model_dump(mode="json"))
-    with session_factory() as db:
-        prompt = await budget.fit_to_budget(
-            prompt_for(db, user_msg.id), provider, context_budget, summary_max_tokens
-        )
-        chunks: list[str] = []
-        try:
-            async for chunk in provider.stream(prompt, max_tokens=max_tokens):
-                chunks.append(chunk)
-                yield sse("token", {"text": chunk})
-        except Exception as exc:  # provider/network failure: tell the client, persist nothing
-            logger.exception("LLM provider %s failed", provider.name)
-            yield sse("error", {"detail": f"LLM provider error: {exc}"})
-            return
-        content = clean_text("".join(chunks))
-        if not content.strip():
-            # Treat a blank answer like a failure: a blank assistant node would be a
-            # dead bubble, and Anthropic rejects any later prompt containing an
-            # empty assistant turn, poisoning the whole branch. Keeping the user
-            # turn childless lets a retry reuse it (see create_user_node).
-            logger.warning("LLM provider %s returned an empty reply", provider.name)
-            yield sse("error", {"detail": "LLM returned an empty reply"})
-            return
-        assistant = Message(
-            conversation_id=user_msg.conversation_id,
-            parent_id=user_msg.id,
-            role=Role.assistant,
-            content=content,
-        )
-        db.add(assistant)
-        try:
-            db.commit()
-        except Exception:
-            db.rollback()
-            logger.exception("could not save the reply to %s", user_msg.id)
-            yield sse("error", {"detail": "Could not save the reply; please retry"})
-            return
-        yield sse("done", MessageOut.model_validate(assistant).model_dump(mode="json"))
+    # Two short sessions, none open while the model runs (Q29): generation can
+    # take minutes, and a session kept open across it pins a pooled connection
+    # (an idle transaction on Postgres) per in-flight reply, so a few concurrent
+    # replies would exhaust the pool and stall every other request.
+    try:
+        with session_factory() as db:
+            messages = prompt_for(db, user_msg.id)
+    except Exception:
+        logger.exception("could not load the path for %s", user_msg.id)
+        yield sse("error", {"detail": "Could not load the conversation; please retry"})
+        return
+    prompt = await budget.fit_to_budget(messages, provider, context_budget, summary_max_tokens)
+    chunks: list[str] = []
+    try:
+        async for chunk in provider.stream(prompt, max_tokens=max_tokens):
+            chunks.append(chunk)
+            yield sse("token", {"text": chunk})
+    except Exception as exc:  # provider/network failure: tell the client, persist nothing
+        logger.exception("LLM provider %s failed", provider.name)
+        yield sse("error", {"detail": f"LLM provider error: {exc}"})
+        return
+    content = clean_text("".join(chunks))
+    if not content.strip():
+        # Treat a blank answer like a failure: a blank assistant node would be a
+        # dead bubble, and Anthropic rejects any later prompt containing an
+        # empty assistant turn, poisoning the whole branch. Keeping the user
+        # turn childless lets a retry reuse it (see create_user_node).
+        logger.warning("LLM provider %s returned an empty reply", provider.name)
+        yield sse("error", {"detail": "LLM returned an empty reply"})
+        return
+    assistant = Message(
+        conversation_id=user_msg.conversation_id,
+        parent_id=user_msg.id,
+        role=Role.assistant,
+        content=content,
+    )
+    try:
+        with session_factory() as db:
+            db.add(assistant)
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+            # Plain values for the `done` event, read while the session is open
+            # (the object is detached once it closes).
+            done = MessageOut.model_validate(assistant).model_dump(mode="json")
+    except Exception:
+        logger.exception("could not save the reply to %s", user_msg.id)
+        yield sse("error", {"detail": "Could not save the reply; please retry"})
+        return
+    yield sse("done", done)
