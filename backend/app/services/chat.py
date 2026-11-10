@@ -14,8 +14,12 @@ from app.db.errors import ConflictError
 from app.db.models import Message, Note, Role
 from app.llm import DEFAULT_MAX_TOKENS, ChatMessage, LLMProvider
 from app.services import budget
+from app.services.preview import make_preview
 
 logger = logging.getLogger(__name__)
+
+# Auto-titles are sidebar labels: short enough to fit one line of the list.
+AUTO_TITLE_CHARS = 60
 
 
 def max_tokens_from_env() -> int:
@@ -94,6 +98,10 @@ def create_user_node(db: Session, parent_id: str, content: str, quote: str | Non
     path relies on (Anthropic's Messages API rejects it, and the question above
     would never get its own answer). To ask something else in place of a
     question, reply to that question's parent instead (the UI does this).
+
+    A first question (parent is the root system message) also names the
+    conversation if it still has the default title (Q33): otherwise every
+    conversation in the sidebar reads "New conversation".
     """
     parent = repository.get_message(db, parent_id)
     if parent.role == Role.user:
@@ -111,6 +119,9 @@ def create_user_node(db: Session, parent_id: str, content: str, quote: str | Non
         quote=quote,
     )
     db.add(msg)
+    if parent.role == Role.system:
+        title = make_preview(content, Role.user, AUTO_TITLE_CHARS)
+        repository.title_from_first_turn(db, parent.conversation_id, title)
     db.commit()
     return msg
 

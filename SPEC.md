@@ -30,7 +30,7 @@ Branch Chat lets you branch a side question off any message, explore it with the
   - Merge-back button on side branches.
 
 ## API (v1)
-- `POST /api/conversations` → create
+- `POST /api/conversations` → create (an untitled conversation is named after its first question, ≤60 chars, one line)
 - `GET /api/conversations` → list
 - `GET /api/conversations/{id}/tree` → all nodes (id, parent_id, role, preview) for the sidebar; `preview` is one line, ≤80 chars, with Markdown syntax stripped from assistant replies
 - `GET /api/messages/{id}/path` → root→node messages

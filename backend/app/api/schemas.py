@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.validation import clean_text
+from app.db.models import DEFAULT_TITLE
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 PREVIEW_CHARS = 80
@@ -22,7 +23,7 @@ def _not_blank(value: str) -> str:
 
 
 class ConversationCreate(BaseModel):
-    title: str = Field(default="New conversation", min_length=1, max_length=200)
+    title: str = Field(default=DEFAULT_TITLE, min_length=1, max_length=200)
     system_prompt: str = Field(default=DEFAULT_SYSTEM_PROMPT, min_length=1, max_length=10_000)
 
     @field_validator("title")

@@ -55,11 +55,16 @@ class Role(StrEnum):
     system = "system"
 
 
+# Title of a conversation nobody has named yet. The first question replaces it
+# (`repository.title_from_first_turn`), so the sidebar list stays readable.
+DEFAULT_TITLE = "New conversation"
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_id)
-    title: Mapped[str] = mapped_column(String(200), default="New conversation")
+    title: Mapped[str] = mapped_column(String(200), default=DEFAULT_TITLE)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
 
     messages: Mapped[list["Message"]] = relationship(

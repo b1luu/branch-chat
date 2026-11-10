@@ -12,6 +12,9 @@ type LoadState =
   | { kind: "error"; message: string }
   | { kind: "ready"; conversations: Conversation[] };
 
+/** The server's title for a conversation nobody has named yet (see `refreshTitles`). */
+const DEFAULT_TITLE = "New conversation";
+
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /**
@@ -57,8 +60,36 @@ export default function App() {
   // Conversations created in this session, newest first (see `withCreated`).
   const created = useRef<Conversation[]>([]);
   const [replyCounts, setReplyCounts] = useState<Readonly<Record<string, number>>>({});
-  const onReplyPersisted = (m: Message) =>
+  // Mirror of `state` for `onReplyPersisted`, which can run from a stale closure.
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  /**
+   * The server names an untitled conversation after its first question (Q33).
+   * Once a reply lands in a conversation the sidebar still shows as untitled,
+   * refetch the list and take the new titles. Silent: a failed refresh just
+   * leaves the old label, it never replaces the list with an error.
+   */
+  function refreshTitles(conversationId: string) {
+    const s = stateRef.current;
+    if (s.kind !== "ready" || s.conversations.find((c) => c.id === conversationId)?.title !== DEFAULT_TITLE) return;
+    listConversations()
+      .then((fetched) => {
+        const titles = new Map(fetched.map((c) => [c.id, c.title]));
+        created.current = created.current.map((c) => ({ ...c, title: titles.get(c.id) ?? c.title }));
+        setState((cur) =>
+          cur.kind === "ready"
+            ? { kind: "ready", conversations: cur.conversations.map((c) => ({ ...c, title: titles.get(c.id) ?? c.title })) }
+            : cur,
+        );
+      })
+      .catch(() => undefined);
+  }
+  const onReplyPersisted = (m: Message) => {
     setReplyCounts((c) => ({ ...c, [m.conversation_id]: (c[m.conversation_id] ?? 0) + 1 }));
+    refreshTitles(m.conversation_id);
+  };
 
   useEffect(() => {
     let cancelled = false;

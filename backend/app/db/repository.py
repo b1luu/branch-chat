@@ -2,11 +2,11 @@
 
 from collections.abc import Sequence
 
-from sqlalchemy import literal, select
+from sqlalchemy import literal, select, update
 from sqlalchemy.orm import Session, aliased
 
 from app.db.errors import ConflictError, NotFoundError
-from app.db.models import Conversation, Message, Note, Role
+from app.db.models import DEFAULT_TITLE, Conversation, Message, Note, Role
 
 
 def get_message(db: Session, message_id: str) -> Message:
@@ -77,6 +77,22 @@ def create_conversation(
     db.add(root)
     db.flush()
     return conv, root
+
+
+def title_from_first_turn(db: Session, conversation_id: str, title: str) -> None:
+    """Name a still-untitled conversation after its first question (Q33).
+
+    One conditional UPDATE (`WHERE title = DEFAULT_TITLE`) rather than read,
+    check, write: two first questions racing can't both win, and a title the
+    user chose (or an earlier first question set) is never overwritten.
+    Does not commit; the caller owns the transaction.
+    """
+    db.execute(
+        update(Conversation)
+        .where(Conversation.id == conversation_id, Conversation.title == DEFAULT_TITLE)
+        .values(title=title)
+        .execution_options(synchronize_session=False)
+    )
 
 
 def list_conversations(db: Session) -> list[tuple[Conversation, str | None]]:

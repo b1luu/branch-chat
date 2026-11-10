@@ -231,6 +231,82 @@ describe("App", () => {
     expect(screen.getByRole("treeitem", { selected: true })).toHaveTextContent("AI: other side answer");
   });
 
+  describe("auto-title after the first question (Q33)", () => {
+    const root = msg({ id: "r9", conversation_id: "c9", role: "system", content: "sys" });
+    const u = msg({ id: "u9", conversation_id: "c9", parent_id: "r9", content: "Why is the sky blue?" });
+    const a = msg({ id: "a9", conversation_id: "c9", parent_id: "u9", role: "assistant", content: "Rayleigh scattering." });
+    const conv = (title: string) => ({ id: "c9", title, created_at: root.created_at, root_message_id: "r9" });
+
+    const u2 = msg({ id: "u10", conversation_id: "c9", parent_id: "a9", content: "And at sunset?" });
+    const a2 = msg({ id: "a10", conversation_id: "c9", parent_id: "u10", role: "assistant", content: "Longer path." });
+    const sse = (...events: string[]) =>
+      new Response(events.join(""), { status: 200, headers: { "content-type": "text/event-stream" } });
+
+    function setup(listAfterReply: () => Response) {
+      let replied = false;
+      const fetchMock = routeFetch({
+        "GET /api/conversations": () => (replied ? listAfterReply() : jsonResponse([])),
+        "POST /api/conversations": () => jsonResponse(conv("New conversation"), 201),
+        "GET /api/messages/r9/path": () => jsonResponse([root]),
+        "GET /api/conversations/c9/tree": () =>
+          jsonResponse({ conversation_id: "c9", nodes: (replied ? [root, u, a] : [root]).map(treeNode) }),
+        "POST /api/messages/r9/reply": () => {
+          replied = true;
+          return sse(sseEvent("user", u), sseEvent("token", { text: "Rayleigh scattering." }), sseEvent("done", a));
+        },
+        "POST /api/messages/a9/reply": () =>
+          sse(sseEvent("user", u2), sseEvent("token", { text: "Longer path." }), sseEvent("done", a2)),
+      });
+      const listFetches = () => fetchMock.mock.calls.filter(([url, init]) => url === "/api/conversations" && (init?.method ?? "GET") === "GET")
+          .length;
+      return { listFetches };
+    }
+
+    async function askFirstQuestion() {
+      const ui = userEvent.setup();
+      render(<App />);
+      await screen.findByText("No conversations yet.");
+      await ui.click(screen.getByRole("button", { name: "New conversation" }));
+      await screen.findByText("Send a message to start.");
+      await ui.type(screen.getByRole("textbox", { name: "Message" }), "Why is the sky blue?{Enter}");
+      const chat = screen.getByRole("region", { name: "Chat" });
+      await within(chat).findByText("Rayleigh scattering.");
+      await waitFor(() => expect(screen.getByRole("textbox", { name: "Message" })).toBeEnabled());
+      return ui;
+    }
+
+    it("shows the server's new title in the conversation list", async () => {
+      setup(() => jsonResponse([conv("Why is the sky blue?")]));
+      await askFirstQuestion();
+      const list = screen.getByRole("list", { name: "Conversations" });
+      await waitFor(() => expect(within(list).getByRole("button", { name: "Why is the sky blue?" })).toBeInTheDocument());
+      expect(within(list).queryByText("New conversation")).not.toBeInTheDocument();
+    });
+
+    it("keeps the list (and the old label) if the refresh fails", async () => {
+      const { listFetches } = setup(() => jsonResponse({ detail: "boom" }, 500));
+      await askFirstQuestion();
+      await waitFor(() => expect(listFetches()).toBe(2));
+      await new Promise((r) => setTimeout(r, 30));
+      const list = screen.getByRole("list", { name: "Conversations" });
+      expect(within(list).getByRole("button", { name: "New conversation" })).toBeInTheDocument();
+      expect(screen.queryByText("Couldn't load conversations")).not.toBeInTheDocument();
+    });
+
+    it("doesn't refetch the list for replies in an already-titled conversation", async () => {
+      const { listFetches } = setup(() => jsonResponse([conv("Why is the sky blue?")]));
+      const ui = await askFirstQuestion();
+      const list = screen.getByRole("list", { name: "Conversations" });
+      await within(list).findByRole("button", { name: "Why is the sky blue?" });
+      expect(listFetches()).toBe(2);
+      // A second reply: the list already has a real title, so no refetch.
+      await ui.type(screen.getByRole("textbox", { name: "Message" }), "And at sunset?{Enter}");
+      await within(screen.getByRole("region", { name: "Chat" })).findByText("Longer path.");
+      await new Promise((r) => setTimeout(r, 30));
+      expect(listFetches()).toBe(2);
+    });
+  });
+
   describe("a reply that finishes after navigating away (Q4)", () => {
     const root = msg({ id: "r1", role: "system", content: "sys" });
     const u = msg({ id: "u1", parent_id: "r1", content: "hello" });
