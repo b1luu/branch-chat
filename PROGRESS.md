@@ -440,3 +440,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - No new deps (coverage via a temporary, unsaved `@vitest/coverage-v8`; backend 99%, frontend 97% statements).
 - Local agent: still no real-model run in LOCAL_TESTS.md; `python scripts/local_test.py` on the PC is ready.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-10 19:05 UTC — Q31 (post-backlog bug pass: nested merge notes lost when merging the parent branch)
+- Status: green
+- Done: **Q31** `merge.build_summary_prompt` sent only the side branch's own turns to the summarizer. If a nested side branch had already been merged *into* that branch (its note pinned on a branch message, shown inline and in the branch's later context), merging the branch back ignored it, so the nested conclusion never reached the main thread. `merge_branch` now loads the notes on the branch's messages and the transcript puts each one right after the message it is pinned to ("Note (merged back from a nested side discussion at this point): …", clipped like turns). Same skip rule as `chat.build_prompt` (a note whose source leaf is on this branch is left out); notes on the fork origin (sibling branches' conclusions) stay out. README merge paragraph updated.
+- Tests: new `test_merge_nested_notes.py` (+5): merged nested note appears after its message and the nested turns aren't replayed; no notes → no marker; origin notes excluded; own-leaf note skipped; Q27 trimming keeps or drops a turn and its notes together, with the omitted count still counting turns. 3 failed before the fix (the other 2 pin existing behaviour).
+- Decisions: the note rides in the same transcript entry as its message rather than as its own entry, so `_fit_turns` never orphans a note from the turn it belongs to. Notes are included as text, not as nested transcripts: the note already is the summary.
+- Checks: backend ruff + pytest (357 passed, 23 skipped), frontend lint + 211 tests + build (no frontend change).
+- No new deps (coverage via a temporary, unsaved `pytest-cov`; backend 99%).
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).

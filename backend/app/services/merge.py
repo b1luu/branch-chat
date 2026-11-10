@@ -2,7 +2,7 @@
 
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ TURN_CHARS = 4_000
 # Floor for the whole-transcript cap, so a tiny CONTEXT_TOKEN_BUDGET still leaves room.
 MIN_TRANSCRIPT_CHARS = 4_000
 OMITTED_TURNS = "[… {n} earlier turns of the side discussion omitted …]"
+NESTED_NOTE = "Note (merged back from a nested side discussion at this point): {text}"
 
 
 class MergeError(Exception):
@@ -50,11 +51,20 @@ def transcript_chars_for(context_budget: int, max_tokens: int) -> int:
     return max(MIN_TRANSCRIPT_CHARS, room * budget.CHARS_PER_TOKEN)
 
 
-def _format_turn(m: Message) -> str:
+def _format_turn(m: Message, notes: Sequence[Note] = ()) -> str:
+    """One transcript entry: the turn, then any nested merge notes pinned to it.
+
+    Notes stay in the same entry as their message so `_fit_turns` keeps or
+    drops them together (and its omitted count stays a count of turns).
+    """
     speaker = "User" if m.role == Role.user else "Assistant"
     if m.quote:
-        return f'{speaker} (about the excerpt "{_clip(m.quote)}"): {_clip(m.content)}'
-    return f"{speaker}: {_clip(m.content)}"
+        text = f'{speaker} (about the excerpt "{_clip(m.quote)}"): {_clip(m.content)}'
+    else:
+        text = f"{speaker}: {_clip(m.content)}"
+    for note in notes:
+        text += "\n" + NESTED_NOTE.format(text=_clip(note.content))
+    return text
 
 
 def _fit_turns(turns: list[str], max_chars: int) -> list[str]:
@@ -81,7 +91,10 @@ def _fit_turns(turns: list[str], max_chars: int) -> list[str]:
 
 
 def build_summary_prompt(
-    origin: Message, branch: Sequence[Message], max_chars: int | None = None
+    origin: Message,
+    branch: Sequence[Message],
+    max_chars: int | None = None,
+    notes: Mapping[str, Sequence[Note]] | None = None,
 ) -> list[ChatMessage]:
     """Summarizer input: instructions + one user turn holding the transcript.
 
@@ -92,9 +105,20 @@ def build_summary_prompt(
     without it a long branch could exceed the model's context window, which
     is a 502 from Anthropic and silent front-truncation (losing the question)
     on Ollama.
+
+    `notes` are merge-back notes on the branch's own messages (Q31): a nested
+    side discussion that was merged into this branch is part of what this
+    branch concluded (it is shown inline and in later context), so its note
+    goes into the transcript right after the message it is pinned to. Like
+    `chat.build_prompt`, a note whose source leaf is on this branch is skipped.
     """
+    notes = notes or {}
+    on_branch = {m.id for m in branch}
     head = f"Main conversation message the side discussion branched from:\n{_clip(origin.content)}"
-    turns = [_format_turn(m) for m in branch]
+    turns = [
+        _format_turn(m, [n for n in notes.get(m.id, ()) if n.source_leaf_id not in on_branch])
+        for m in branch
+    ]
     if max_chars is not None:
         turns = _fit_turns(turns, max_chars - len(head))
     lines = [head, "\nSide discussion:", *turns, "\nSummarize the side discussion."]
@@ -137,7 +161,10 @@ async def merge_branch(
     origin, branch = path[start - 1], path[start:]
     origin_id = origin.id
     prompt = build_summary_prompt(
-        origin, branch, max_chars=transcript_chars_for(context_budget, max_tokens)
+        origin,
+        branch,
+        max_chars=transcript_chars_for(context_budget, max_tokens),
+        notes=repository.notes_for(db, [m.id for m in branch]),
     )
     # End the read transaction so no pooled connection is held while the
     # summarizer runs (Q29); nothing is pending, so this commit writes nothing.
