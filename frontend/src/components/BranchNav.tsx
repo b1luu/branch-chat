@@ -54,6 +54,10 @@ export default function BranchNav({ nodes, activeLeaf, onSelect }: BranchNavProp
     return branchTip(nodes, forkOrigin);
   });
   const backTarget = targets.at(-1) ?? activeLeaf;
+  // A question selected as the leaf (clicked in the tree, or one whose reply
+  // failed) has no answer on this path, so a merge would summarize an open
+  // question as if it were the branch's conclusion (Q32). Merge from an answer.
+  const leafIsQuestion = nodes.find((n) => n.id === activeLeaf)?.role === "user";
 
   async function merge() {
     setMerging(true);
@@ -92,9 +96,20 @@ export default function BranchNav({ nodes, activeLeaf, onSelect }: BranchNavProp
       <button type="button" className="back" onClick={() => onSelect(backTarget)}>
         {segments.length === 2 ? "Back to main thread" : "Back to parent branch"}
       </button>
-      <button type="button" className="merge" onClick={() => void merge()} disabled={merging}>
+      <button
+        type="button"
+        className="merge"
+        onClick={() => void merge()}
+        disabled={merging || leafIsQuestion}
+        aria-describedby={leafIsQuestion ? "merge-hint" : undefined}
+      >
         {merging ? "Merging…" : "Merge back"}
       </button>
+      {leafIsQuestion && (
+        <p id="merge-hint" className="composer-hint">
+          Select an answer to merge back: a question on its own has no conclusion to summarize.
+        </p>
+      )}
       {mergeError && <p role="alert">Merge failed: {mergeError}</p>}
     </div>
   );

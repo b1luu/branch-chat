@@ -178,6 +178,29 @@ describe("BranchNav", () => {
     expect(screen.getByRole("button", { name: "Merge back" })).toBeEnabled();
   });
 
+  it("disables Merge back while a question is the selected leaf (Q32)", async () => {
+    const fetchMock = mockFetch(jsonResponse({}, 201));
+    render(<BranchNav nodes={nodes} activeLeaf="q2" onSelect={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "Merge back" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(/Select an answer to merge back/);
+    await userEvent.setup().click(button);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Navigation still works from a question.
+    expect(screen.getByRole("button", { name: "Back to main thread" })).toBeEnabled();
+  });
+
+  it("disables Merge back on the side branch's first question too", () => {
+    render(<BranchNav nodes={nodes} activeLeaf="q1" onSelect={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Merge back" })).toBeDisabled();
+  });
+
+  it("an answer leaf has Merge back enabled and no hint", () => {
+    render(<BranchNav nodes={nodes} activeLeaf="b2" onSelect={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Merge back" })).toBeEnabled();
+    expect(screen.queryByText(/Select an answer to merge back/)).not.toBeInTheDocument();
+  });
+
   it("offers no merge on the main thread", () => {
     render(<BranchNav nodes={nodes} activeLeaf="a6" onSelect={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Merge back" })).not.toBeInTheDocument();

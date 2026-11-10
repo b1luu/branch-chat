@@ -449,3 +449,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (357 passed, 23 skipped), frontend lint + 211 tests + build (no frontend change).
 - No new deps (coverage via a temporary, unsaved `pytest-cov`; backend 99%).
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
+
+## 2026-11-10 19:15 UTC — Q32 (post-backlog bug pass: "Merge back" from an unanswered question)
+- Status: green
+- Done: **Q32** BranchNav offered "Merge back" for any side-branch leaf, including a question selected as the leaf (clicked in the tree, or one whose reply failed). That merge summarizes the path *down to the question*, so the note presented an open question as the branch's conclusion (and, if the question had an answer, dropped it). The button is now disabled while the leaf is a user turn, with a hint ("Select an answer to merge back…") linked via `aria-describedby`; back/breadcrumb navigation is unchanged.
+- Tests: `BranchNav.test.tsx` (+3): disabled with the hint and no request on a nested question; disabled on the side branch's first question; enabled with no hint on an answer. The 2 "disabled" tests failed before the fix.
+- Decisions: frontend guard only, no new backend 409: the API stays permissive (a client may want to merge exactly what's on the path) and no existing behaviour changes for other callers. Reused the `composer-hint` class so no stylesheet change.
+- Checks: backend ruff + pytest (357 passed, 23 skipped, no backend change), frontend lint + 214 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon).
