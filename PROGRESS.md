@@ -467,3 +467,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (364 passed, 23 skipped), frontend lint + 217 tests + build.
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon); renaming a conversation from the UI if wanted (product call).
+
+## 2026-11-11 19:10 UTC — Q34 (post-backlog bug pass: `%00` in a URL id was a 500 on Postgres)
+- Status: green
+- Done: **Q34** Every id-taking route (`GET /messages/{id}/path`, `GET /conversations/{id}/tree`, `POST /messages/{id}/reply`, `POST /branches/{id}/merge`) passed the raw path segment to the database. `%00` decodes to NUL, which Postgres refuses in any query parameter (psycopg DataError), so all four returned 500 on Postgres (SQLite just found nothing and 404'd). Q26 cleaned NUL out of request *bodies* but not URLs. `repository.get_message`, `get_path` and `get_tree` (the only entry points for URL ids) now 404 an id containing NUL before querying; the detail shows it as `\x00`, never a raw NUL.
+- Tests: `test_nul_chars.py` (+7 cases, SQLite and Postgres): each route with a real id + `%00` is 404 with a NUL-free detail, adds no rows, and the app serves the same conversation normally afterwards; ids of only/inner NUL 404. Verified against a local Postgres 16 (`TEST_POSTGRES_URL`): 11 failed before the fix (7 Postgres 500s, 4 raw-NUL details).
+- Decisions: 404, not 422: generated ids are hex and can never contain NUL, so "not found" is the truthful answer on both databases, and the guard lives in the repository so every caller (chat, merge) gets it. No id-format regex on routes: that would turn today's 404s for unknown ids into 422s and change the API contract.
+- Checks: backend ruff + pytest (371 passed, 30 skipped; with Postgres 396 passed, 5 skipped), frontend lint + 217 tests + build (no frontend change).
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon); renaming a conversation from the UI if wanted (product call).

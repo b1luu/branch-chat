@@ -9,7 +9,21 @@ from app.db.errors import ConflictError, NotFoundError
 from app.db.models import DEFAULT_TITLE, Conversation, Message, Note, Role
 
 
+def _check_id(kind: str, id_: str) -> None:
+    """404 an id that can't name any row before it reaches the database (Q34).
+
+    Ids come straight from URL path segments, and `%00` decodes to a NUL
+    character. Postgres refuses NUL in any text parameter (psycopg DataError),
+    so a lookup with one was a 500 there while SQLite simply found nothing.
+    Generated ids are hex and never contain NUL, so "not found" is the truthful
+    answer on both databases.
+    """
+    if "\x00" in id_:
+        raise NotFoundError(kind, id_.replace("\x00", "\\x00"))
+
+
 def get_message(db: Session, message_id: str) -> Message:
+    _check_id("message", message_id)
     msg = db.get(Message, message_id)
     if msg is None:
         raise NotFoundError("message", message_id)
@@ -37,6 +51,7 @@ def get_path(db: Session, message_id: str) -> list[Message]:
     depth descending yields root first. Standard SQL: runs on SQLite and Postgres.
     Cost is O(depth) index lookups on the primary key, regardless of tree size.
     """
+    _check_id("message", message_id)
     anchor = select(
         Message.id.label("id"),
         Message.parent_id.label("parent_id"),
@@ -118,6 +133,7 @@ def get_tree(db: Session, conversation_id: str) -> list[Message]:
     through `parents_first`, which keeps time order but holds back any node
     until its parent has been emitted.
     """
+    _check_id("conversation", conversation_id)
     if db.get(Conversation, conversation_id) is None:
         raise NotFoundError("conversation", conversation_id)
     stmt = (
@@ -227,4 +243,3 @@ def notes_for(db: Session, message_ids: Sequence[str]) -> dict[str, list[Note]]:
 def note_for_leaf(db: Session, leaf_id: str) -> Note | None:
     """The merge note already made from `leaf_id`, if any (unique per leaf)."""
     return db.scalars(select(Note).where(Note.source_leaf_id == leaf_id)).first()
-

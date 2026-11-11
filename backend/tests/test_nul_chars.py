@@ -210,3 +210,41 @@ def test_user_preview_drops_nul() -> None:
 )
 def test_clean_text(raw: str, clean: str) -> None:
     assert clean_text(raw) == clean
+
+
+# --- ids in the URL (Q34) -------------------------------------------------------
+# `%00` in a path segment decodes to NUL. Postgres rejects NUL in any query
+# parameter, so these lookups were 500s there (SQLite found nothing: 404).
+
+
+def _nul_id_requests(real_id: str) -> list[tuple[str, str, dict]]:
+    bad = f"{real_id}%00"
+    return [
+        ("get", f"/api/messages/{bad}/path", {}),
+        ("get", f"/api/conversations/{bad}/tree", {}),
+        ("post", f"/api/messages/{bad}/reply", {"json": {"content": "hi"}}),
+        ("post", f"/api/branches/{bad}/merge", {}),
+    ]
+
+
+@pytest.mark.parametrize("which", range(4))
+def test_id_with_nul_in_the_url_is_404(nclient: TestClient, nul_engine: Engine, which: int) -> None:
+    conv = new_conversation(nclient)
+    answer = done(reply(nclient, conv["root_message_id"], "hi"))
+    # A real id with NUL appended must not match the real row, and the
+    # conversation id is used for the tree route.
+    real = conv["id"] if which == 1 else answer["id"]
+    method, url, kw = _nul_id_requests(real)[which]
+    response = getattr(nclient, method)(url, **kw)
+    assert response.status_code == 404, response.text
+    assert "\x00" not in response.json()["detail"]
+    assert len(stored(nul_engine, Message)) == 3  # nothing was added
+    # The app still serves normal requests afterwards.
+    assert nclient.get(f"/api/messages/{answer['id']}/path").status_code == 200
+    assert done(reply(nclient, answer["id"], "and then?"))["role"] == "assistant"
+
+
+@pytest.mark.parametrize("bad", ["%00", "a%00b", "%00%00"])
+def test_message_path_with_only_or_inner_nul_is_404(nclient: TestClient, bad: str) -> None:
+    response = nclient.get(f"/api/messages/{bad}/path")
+    assert response.status_code == 404, response.text
