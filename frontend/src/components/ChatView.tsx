@@ -17,6 +17,13 @@ interface ChatViewProps {
    * Lets the tree sidebar pick up nodes this view no longer shows.
    */
   onReplyPersisted?: (assistant: Message) => void;
+  /**
+   * Called with a user turn the server saved whose reply then failed (Q35).
+   * The question stays in the tree (childless, so a retry reuses it) and, as a
+   * first question, has already named the conversation, so the sidebar should
+   * refresh even though no reply was persisted. Fires for detached sends too.
+   */
+  onQuestionPersisted?: (user: Message) => void;
 }
 
 /** A user turn sent but not yet confirmed by the server's `user` event. */
@@ -68,7 +75,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
  * active leaf to the new assistant message. The path is only re-fetched when
  * `leafId` changes to something we didn't just create ourselves.
  */
-export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: ChatViewProps) {
+export default function ChatView({ leafId, onLeafChange, onReplyPersisted, onQuestionPersisted }: ChatViewProps) {
   const [path, setPath] = useState<Message[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -170,6 +177,9 @@ export default function ChatView({ leafId, onLeafChange, onReplyPersisted }: Cha
       knownLeaf.current = assistant.id;
       onLeafChange(assistant.id);
     } catch (err) {
+      // The `user` event arrived, so the question is saved even though the reply isn't.
+      const savedUser: Message | null = userNode;
+      if (savedUser) onQuestionPersisted?.(savedUser);
       if (controller.signal.aborted || !attached()) return;
       setSendError(errorText(err));
       setDraft((d) => d || content); // let the user retry without retyping (the quote is kept too)

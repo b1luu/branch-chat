@@ -489,6 +489,71 @@ describe("ChatView — navigating away mid-stream", () => {
   });
 });
 
+describe("ChatView reporting a saved question whose reply failed (Q35)", () => {
+  async function sendFailing(events: string[], onQuestionPersisted = vi.fn(), onReplyPersisted = vi.fn()) {
+    mockFetch(jsonResponse([root, u1, a1]), sseResponse(events));
+    render(
+      <ChatView
+        leafId="a1"
+        onLeafChange={vi.fn()}
+        onReplyPersisted={onReplyPersisted}
+        onQuestionPersisted={onQuestionPersisted}
+      />,
+    );
+    await screen.findByText("What is a CTE?");
+    await userEvent.setup().type(screen.getByRole("textbox", { name: "Message" }), "Recursive?{Enter}");
+    return { onQuestionPersisted, onReplyPersisted };
+  }
+
+  it("reports the question when the server saved it but the model failed", async () => {
+    const { onQuestionPersisted, onReplyPersisted } = await sendFailing([
+      sseEvent("user", u2),
+      sseEvent("error", { detail: "model crashed" }),
+    ]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("model crashed");
+    expect(onQuestionPersisted).toHaveBeenCalledExactlyOnceWith(u2);
+    expect(onReplyPersisted).not.toHaveBeenCalled();
+  });
+
+  it("doesn't report a question the server never confirmed", async () => {
+    mockFetch(jsonResponse([root, u1, a1]), jsonResponse({ detail: "Rate limit exceeded" }, 429));
+    const onQuestionPersisted = vi.fn();
+    render(<ChatView leafId="a1" onLeafChange={vi.fn()} onQuestionPersisted={onQuestionPersisted} />);
+    await screen.findByText("What is a CTE?");
+    await userEvent.setup().type(screen.getByRole("textbox", { name: "Message" }), "Recursive?{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Rate limit");
+    expect(onQuestionPersisted).not.toHaveBeenCalled();
+  });
+
+  it("doesn't report the question for a reply that succeeded", async () => {
+    const { onQuestionPersisted, onReplyPersisted } = await sendFailing([
+      sseEvent("user", u2),
+      sseEvent("token", { text: "Yes, it can recurse." }),
+      sseEvent("done", a2),
+    ]);
+    await waitFor(() => expect(onReplyPersisted).toHaveBeenCalledWith(a2));
+    expect(onQuestionPersisted).not.toHaveBeenCalled();
+  });
+
+  it("reports it for a detached send too", async () => {
+    const stream = controlledSSE();
+    const ub = msg({ id: "ub", parent_id: "root", content: "Other branch question" });
+    const ab = msg({ id: "ab", parent_id: "ub", role: "assistant", content: "Other branch answer" });
+    mockFetch(jsonResponse([root, u1, a1]), stream.response, jsonResponse([root, ub, ab]));
+    const onQuestionPersisted = vi.fn();
+    const view = render(<ChatView leafId="a1" onLeafChange={vi.fn()} onQuestionPersisted={onQuestionPersisted} />);
+    await screen.findByText("What is a CTE?");
+    await userEvent.setup().type(screen.getByRole("textbox", { name: "Message" }), "Recursive?{Enter}");
+    stream.push(sseEvent("user", u2));
+    view.rerender(<ChatView leafId="ab" onLeafChange={vi.fn()} onQuestionPersisted={onQuestionPersisted} />);
+    await screen.findByText("Other branch answer");
+    stream.push(sseEvent("error", { detail: "model crashed" }));
+    stream.close();
+    await waitFor(() => expect(onQuestionPersisted).toHaveBeenCalledExactlyOnceWith(u2));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // still detached
+  });
+});
+
 describe("ChatView with a question as the active leaf (Q8)", () => {
   const u2b = msg({ id: "u2b", parent_id: "a1", content: "Recursive, really?" });
   const a2b = msg({ id: "a2b", parent_id: "u2b", role: "assistant", content: "Really." });

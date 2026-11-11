@@ -49,18 +49,19 @@ export default function App() {
   const [busy, setBusy] = useState<{ kind: "creating" } | { kind: "opening"; id: string } | null>(null);
   // Latest `/tree` the sidebar fetched, tagged with its conversation so a stale one is never used.
   const [tree, setTree] = useState<{ conversationId: string; nodes: TreeNode[] } | null>(null);
+  // Conversations created in this session, newest first (see `withCreated`).
+  const created = useRef<Conversation[]>([]);
   /**
-   * Counts replies persisted per conversation. A reply that finishes after the
+   * Counts turns persisted per conversation: replies, and questions whose
+   * reply failed (Q35, the question is still a new tree node). A reply that finishes after the
    * user switched branch or conversation never becomes the active leaf, so the
    * sidebar wouldn't notice it; bumping this makes it refetch the tree. Keyed by
    * conversation so a background reply in another conversation doesn't refetch
    * the open one. (The callback may be a stale closure from when the send started,
    * so it only uses the functional state update.)
    */
-  // Conversations created in this session, newest first (see `withCreated`).
-  const created = useRef<Conversation[]>([]);
   const [replyCounts, setReplyCounts] = useState<Readonly<Record<string, number>>>({});
-  // Mirror of `state` for `onReplyPersisted`, which can run from a stale closure.
+  // Mirror of `state` for `onTurnPersisted`, which can run from a stale closure.
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
@@ -86,7 +87,8 @@ export default function App() {
       })
       .catch(() => undefined);
   }
-  const onReplyPersisted = (m: Message) => {
+  // Any saved turn: an assistant reply, or a question whose reply failed (Q35).
+  const onTurnPersisted = (m: Message) => {
     setReplyCounts((c) => ({ ...c, [m.conversation_id]: (c[m.conversation_id] ?? 0) + 1 }));
     refreshTitles(m.conversation_id);
   };
@@ -206,7 +208,12 @@ export default function App() {
           <BranchNav key={activeLeaf} nodes={tree.nodes} activeLeaf={activeLeaf} onSelect={setActiveLeaf} />
         )}
         {activeLeaf ? (
-          <ChatView leafId={activeLeaf} onLeafChange={setActiveLeaf} onReplyPersisted={onReplyPersisted} />
+          <ChatView
+            leafId={activeLeaf}
+            onLeafChange={setActiveLeaf}
+            onReplyPersisted={onTurnPersisted}
+            onQuestionPersisted={onTurnPersisted}
+          />
         ) : (
           <p>Pick a conversation or start a new one.</p>
         )}

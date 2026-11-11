@@ -307,6 +307,44 @@ describe("App", () => {
     });
   });
 
+  describe("a first question whose reply fails (Q35)", () => {
+    const root = msg({ id: "r7", conversation_id: "c7", role: "system", content: "sys" });
+    const u = msg({ id: "u7", conversation_id: "c7", parent_id: "r7", content: "Why is the sky blue?" });
+    const conv = (title: string) => ({ id: "c7", title, created_at: root.created_at, root_message_id: "r7" });
+    const sse = (...events: string[]) =>
+      new Response(events.join(""), { status: 200, headers: { "content-type": "text/event-stream" } });
+
+    it("shows the server's title and the saved question in the tree", async () => {
+      // The server saves (and titles from) the question before the model runs.
+      let asked = false;
+      routeFetch({
+        "GET /api/conversations": () => jsonResponse(asked ? [conv("Why is the sky blue?")] : []),
+        "POST /api/conversations": () => jsonResponse(conv("New conversation"), 201),
+        "GET /api/messages/r7/path": () => jsonResponse([root]),
+        "GET /api/conversations/c7/tree": () =>
+          jsonResponse({ conversation_id: "c7", nodes: (asked ? [root, u] : [root]).map(treeNode) }),
+        "POST /api/messages/r7/reply": () => {
+          asked = true;
+          return sse(sseEvent("user", u), sseEvent("error", { detail: "model crashed" }));
+        },
+      });
+      const ui = userEvent.setup();
+      render(<App />);
+      await screen.findByText("No conversations yet.");
+      await ui.click(screen.getByRole("button", { name: "New conversation" }));
+      await screen.findByText("Send a message to start.");
+      await ui.type(screen.getByRole("textbox", { name: "Message" }), "Why is the sky blue?{Enter}");
+      expect(await screen.findByText(/Reply failed: model crashed/)).toBeInTheDocument();
+
+      const list = screen.getByRole("list", { name: "Conversations" });
+      await waitFor(() => expect(within(list).getByRole("button", { name: "Why is the sky blue?" })).toBeInTheDocument());
+      const tree = screen.getByRole("tree", { name: "Conversation tree" });
+      expect(await within(tree).findByRole("button", { name: "You: Why is the sky blue?" })).toBeInTheDocument();
+      // The draft is kept for a retry, and the chat stays on the root.
+      expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Why is the sky blue?");
+    });
+  });
+
   describe("a reply that finishes after navigating away (Q4)", () => {
     const root = msg({ id: "r1", role: "system", content: "sys" });
     const u = msg({ id: "u1", parent_id: "r1", content: "hello" });

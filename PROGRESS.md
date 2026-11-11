@@ -476,3 +476,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (371 passed, 30 skipped; with Postgres 396 passed, 5 skipped), frontend lint + 217 tests + build (no frontend change).
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon); renaming a conversation from the UI if wanted (product call).
+
+## 2026-11-11 22:55 UTC — Q35 (post-backlog bug pass: a failed first reply left the sidebar stale)
+- Status: green
+- Done: **Q35** The server saves a question (and, since Q33, titles the conversation from a first question) *before* the model runs, so when the reply fails the question is a real, childless tree node. But the UI only refreshed the tree and the conversation list on a *successful* reply, so after a failed reply the sidebar tree didn't show the question and the list still said "New conversation" until a later reply or a reload. `ChatView` now has `onQuestionPersisted`, called with the user node when the `user` event arrived but the reply failed (attached or detached sends); `App` routes it to the same handler as replies (`onTurnPersisted`: bump the tree refresh key, refresh titles if still untitled). Moved a misplaced doc comment in `App` onto `replyCounts`.
+- Tests: `ChatView.test.tsx` (+4): reported on a model failure after `user`; not reported for a 429 (no `user` event) or for a successful reply; reported for a detached send without surfacing its error. `App.test.tsx` (+1): first question fails → list shows the server's title and the tree shows the question, draft kept. 3 failed before the fix.
+- Decisions: a separate callback rather than widening `onReplyPersisted`, so "a reply landed" keeps its meaning for callers; App treats both as "the tree changed". Only fires once the server confirmed the question, so a request rejected before saving (409/422/429) never triggers a refetch.
+- Checks: backend ruff + pytest (371 passed, 30 skipped, no backend change), frontend lint + 222 tests + build.
+- No new deps.
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon); renaming a conversation from the UI if wanted (product call).
