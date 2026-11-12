@@ -20,6 +20,7 @@ from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from app.config import env_int
 from app.db.session import DEFAULT_DATABASE_URL, make_engine
 
 logger = logging.getLogger("app.db.migrate")
@@ -73,7 +74,7 @@ def upgrade(url: str) -> None:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     url = database_url()
-    attempts = int(os.getenv("DB_WAIT_ATTEMPTS", "30"))
+    attempts = env_int("DB_WAIT_ATTEMPTS", 30)
     try:
         wait_for_db(url, attempts=attempts)
     except OperationalError as exc:

@@ -107,7 +107,11 @@ def reply(
     Replying to a message that already has children creates a new branch.
     The user node is committed (and a missing parent 404s) before streaming
     starts, so errors that need a status code happen before the 200.
+    Settings are read first, so a bad one never leaves a saved question behind.
     """
+    max_tokens = chat.max_tokens_from_env()
+    context_budget = budget.context_budget_from_env()
+    summary_max_tokens = budget.summary_max_tokens_from_env()
     user_msg = chat.create_user_node(db, message_id, body.content, body.quote)
     # Release the request's connection now: the dependency only closes this
     # session after the whole stream, and a reused failed turn (no commit) would
@@ -118,9 +122,9 @@ def reply(
             request.app.state.session_factory,
             llm,
             user_msg,
-            chat.max_tokens_from_env(),
-            context_budget=budget.context_budget_from_env(),
-            summary_max_tokens=budget.summary_max_tokens_from_env(),
+            max_tokens,
+            context_budget=context_budget,
+            summary_max_tokens=summary_max_tokens,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

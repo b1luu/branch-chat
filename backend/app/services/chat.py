@@ -2,13 +2,13 @@
 
 import json
 import logging
-import os
 from collections.abc import AsyncIterator, Mapping, Sequence
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.schemas import MessageOut
 from app.api.validation import clean_text
+from app.config import env_int
 from app.db import repository
 from app.db.errors import ConflictError
 from app.db.models import Message, Note, Role
@@ -24,7 +24,7 @@ AUTO_TITLE_CHARS = 60
 
 def max_tokens_from_env() -> int:
     """Output cap per reply (cost guard). `LLM_MAX_TOKENS`, default 1024."""
-    return int(os.getenv("LLM_MAX_TOKENS", str(DEFAULT_MAX_TOKENS)))
+    return env_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS)
 
 
 def format_user_content(content: str, quote: str | None) -> str:

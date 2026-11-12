@@ -31,6 +31,8 @@ from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.config import env_float, env_int
+
 Scope = MutableMapping[str, Any]
 Message = MutableMapping[str, Any]
 Receive = Callable[[], Awaitable[Message]]
@@ -66,8 +68,8 @@ class RateLimitConfig:
         """`RATE_LIMIT_ENABLED`, `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_BURST`, `RATE_LIMIT_TRUST_PROXY`."""
         return cls(
             enabled=_env_bool("RATE_LIMIT_ENABLED", True),
-            per_minute=float(os.getenv("RATE_LIMIT_PER_MINUTE", "20")),
-            burst=int(os.getenv("RATE_LIMIT_BURST", "10")),
+            per_minute=env_float("RATE_LIMIT_PER_MINUTE", 20.0),
+            burst=env_int("RATE_LIMIT_BURST", 10),
             trust_proxy=_env_bool("RATE_LIMIT_TRUST_PROXY", False),
         )
 

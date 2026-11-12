@@ -1,13 +1,13 @@
 """Merge back (D1): summarize a side branch into a note on its fork origin."""
 
 import logging
-import os
 from collections.abc import Mapping, Sequence
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.validation import clean_text
+from app.config import env_int
 from app.db import repository
 from app.db.models import Message, Note, Role
 from app.llm import ChatMessage, LLMProvider
@@ -20,6 +20,7 @@ SUMMARY_SYSTEM_PROMPT = (
     "Write one to three plain sentences stating what was asked and what was concluded. "
     "No preamble, no headings."
 )
+DEFAULT_MERGE_MAX_TOKENS = 300
 # Cap each transcript turn so a huge branch can't blow the summarizer's context.
 TURN_CHARS = 4_000
 # Floor for the whole-transcript cap, so a tiny CONTEXT_TOKEN_BUDGET still leaves room.
@@ -34,7 +35,7 @@ class MergeError(Exception):
 
 def merge_max_tokens() -> int:
     """Output cap for summaries (`MERGE_MAX_TOKENS`, default 300): notes should be short."""
-    return int(os.getenv("MERGE_MAX_TOKENS", "300"))
+    return env_int("MERGE_MAX_TOKENS", DEFAULT_MERGE_MAX_TOKENS)
 
 
 def _clip(text: str) -> str:

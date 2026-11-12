@@ -25,10 +25,10 @@ Design points worth knowing:
 import hashlib
 import logging
 import math
-import os
 from collections import OrderedDict
 from collections.abc import Sequence
 
+from app.config import env_int
 from app.llm import ChatMessage, LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -54,12 +54,12 @@ _cache: "OrderedDict[str, str]" = OrderedDict()
 
 def context_budget_from_env() -> int:
     """`CONTEXT_TOKEN_BUDGET` (estimated tokens), default 60k."""
-    return int(os.getenv("CONTEXT_TOKEN_BUDGET", str(DEFAULT_CONTEXT_TOKEN_BUDGET)))
+    return env_int("CONTEXT_TOKEN_BUDGET", DEFAULT_CONTEXT_TOKEN_BUDGET)
 
 
 def summary_max_tokens_from_env() -> int:
     """`CONTEXT_SUMMARY_MAX_TOKENS`: output cap for the ancestor summary, default 500."""
-    return int(os.getenv("CONTEXT_SUMMARY_MAX_TOKENS", str(DEFAULT_SUMMARY_MAX_TOKENS)))
+    return env_int("CONTEXT_SUMMARY_MAX_TOKENS", DEFAULT_SUMMARY_MAX_TOKENS)
 
 
 def estimate_tokens(text: str) -> int:

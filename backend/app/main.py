@@ -11,6 +11,20 @@ from app.api.validation import validation_error
 from app.db.errors import ConflictError, NotFoundError
 from app.db.session import make_engine, make_session_factory
 from app.llm import LLMProvider, get_provider
+from app.services import budget, chat, merge
+
+
+def check_settings() -> None:
+    """Read every per-request numeric setting once, so a bad value fails startup (Q36).
+
+    The services re-read these on each request (tests change them per test);
+    this only makes a typo surface as a `ConfigError` when the API starts
+    rather than as a 500 on every reply and merge.
+    """
+    chat.max_tokens_from_env()
+    merge.merge_max_tokens()
+    budget.context_budget_from_env()
+    budget.summary_max_tokens_from_env()
 
 
 def create_app(
@@ -27,6 +41,7 @@ def create_app(
     comes from `RATE_LIMIT_*` env vars unless `rate_limit` is given; tests can
     also pass a `limiter` with a fake clock.
     """
+    check_settings()
     app = FastAPI(title="Branch Chat API", version="0.1.0")
     app.state.session_factory = session_factory or make_session_factory(make_engine())
     app.state.llm_provider = llm_provider or get_provider()
