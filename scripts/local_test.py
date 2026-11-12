@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run the real-model (Ollama) tests on Brandon's PC and report to LOCAL_TESTS.md.
 
-Steps: `git pull` → check Ollama is up and the model is pulled → `pytest -m ollama` in backend/ with LLM_PROVIDER=ollama →
+Steps: `git pull` → check Ollama is up and the model is pulled → check this
+Python has the backend deps → `pytest -m ollama` in backend/ with LLM_PROVIDER=ollama →
 append an entry to LOCAL_TESTS.md → commit only that file → rebase on
 origin/main → push. `--no-push` does everything except commit and push.
 
@@ -50,6 +51,7 @@ class TestRun:
     skipped: int = 0
     failures: list[Failure] = field(default_factory=list)
     note: str | None = None  # set when the run couldn't happen (e.g. Ollama down)
+    skip_reason: str | None = None  # message of the first skipped test, if any
 
 
 def parse_junit(xml_text: str) -> TestRun:
@@ -71,11 +73,28 @@ def parse_junit(xml_text: str) -> TestRun:
         if bad is not None:
             text = bad.text or bad.get("message") or ""
             run.failures.append(Failure(full, text))
-        elif case.find("skipped") is not None:
+        elif (skip := case.find("skipped")) is not None:
             run.skipped += 1
+            if run.skip_reason is None:
+                run.skip_reason = skip.get("message") or (skip.text or "").strip() or None
         else:
             run.passed += 1
     return run
+
+
+def all_skipped_note(run: TestRun) -> str | None:
+    """A 'not run' reason when every collected test was skipped, else None.
+
+    Preflight checks Ollama before pytest starts, but the tests' own 1s probe
+    can still fail (Ollama busy loading the model, a different base URL in the
+    test env). Every test then skips, and without this the entry would read
+    "0/N passed" with "Failures: none", which looks like a clean run and hides
+    that nothing was tested.
+    """
+    if run.note or run.total == 0 or run.skipped != run.total:
+        return None
+    reason = f": {run.skip_reason}" if run.skip_reason else ""
+    return f"all {run.total} `ollama` tests skipped{reason}"
 
 
 def result_line(run: TestRun) -> str:
@@ -191,7 +210,47 @@ def ollama_models(base_url: str) -> list[str] | None:
     return [str(m["id"]) for m in data if isinstance(m, dict) and "id" in m]
 
 
+# What the backend tests import; checked with the same interpreter that runs pytest.
+REQUIRED_MODULES = ("pytest", "fastapi", "sqlalchemy", "httpx")
+
+
+def missing_deps_note(python: str = sys.executable) -> str | None:
+    """Why pytest can't run with `python`, or None if the backend deps import.
+
+    This script is stdlib-only, so it can be started with a Python that lacks
+    the backend's packages (system Python instead of the project venv). pytest
+    would then die before writing its results file, and the entry would only
+    say "pytest crashed". Name the interpreter and the fix instead.
+    """
+    probe = (
+        "import importlib.util, sys\n"
+        f"missing = [m for m in {REQUIRED_MODULES!r} if importlib.util.find_spec(m) is None]\n"
+        "print(' '.join(missing))\n"
+    )
+    try:
+        proc = subprocess.run(
+            [python, "-c", probe],
+            cwd=BACKEND,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+    except OSError as exc:
+        return f"could not start {python}: {exc}"
+    missing = proc.stdout.strip() if proc.returncode == 0 else "(probe failed)"
+    if not missing:
+        return None
+    return (
+        f"backend deps missing for {python} ({missing}); run with the backend's venv "
+        '(or `pip install -e ".[dev]"` in backend/)'
+    )
+
+
 def run_pytest(base_url: str, model: str) -> TestRun:
+    deps = missing_deps_note()
+    if deps:
+        return TestRun(note=deps)
     env = {**os.environ, "LLM_PROVIDER": "ollama", "OLLAMA_BASE_URL": base_url}
     env["OLLAMA_MODEL"] = model
     with tempfile.TemporaryDirectory() as tmp:
@@ -202,7 +261,9 @@ def run_pytest(base_url: str, model: str) -> TestRun:
             return TestRun(note="no `ollama` tests collected")
         if not xml_path.exists():
             return TestRun(note=f"pytest crashed (exit {proc.returncode}), no results file")
-        return parse_junit(xml_path.read_text(encoding="utf-8"))
+        run = parse_junit(xml_path.read_text(encoding="utf-8"))
+    run.note = all_skipped_note(run)
+    return run
 
 
 def main(argv: list[str] | None = None) -> int:
