@@ -503,3 +503,12 @@ Newest entries at the bottom. Each sprint appends one entry (format in CLAUDE.md
 - Checks: backend ruff + pytest (401 passed, 30 skipped), frontend lint + 222 tests + build (no frontend change). Pre-existing ruff I001 in `scripts/screenshot.py` when linted from the repo root (outside the required `backend/` check), left as is.
 - No new deps.
 - Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon); renaming a conversation from the UI if wanted (product call).
+
+## 2026-11-13 18:50 UTC — Q38 (post-backlog bug pass: first question answered while the list was loading kept "New conversation")
+- Status: green
+- Done: **Q38** `App` lets you create a conversation while the conversation list is still loading. If the first reply landed before the list did, `refreshTitles` had no list to update and returned; when the list then arrived as a snapshot taken before the create, `withCreated` re-added the conversation with its stale "New conversation" label, which stuck until the next reply. `App` now records conversations with a saved turn (`turnsSaved`); when the list loads and still shows one of those as "New conversation", it fetches titles once more (same silent refresh as Q33). No extra request when the list already has the title.
+- Tests: `App.test.tsx` (+2): list request held open, conversation created and first question answered, then a pre-create `[]` snapshot arrives → the server title replaces "New conversation" (2 list fetches); a snapshot that already has the title → no refetch. The first failed before the fix.
+- Decisions: picked App.tsx because it had the lowest branch coverage in the frontend (87.5%) and backend line coverage is ~99%. Refetch rather than guessing the title locally, so the server stays the only place the title rule lives (as in Q33).
+- Checks: backend ruff + pytest (401 passed, 30 skipped, no backend change), frontend lint + 224 tests + build.
+- No new deps (`@vitest/coverage-v8` was installed `--no-save` only to find weak spots; not committed).
+- Next: backlog complete. Still suggested: re-merge of a grown branch replacing the earlier note (Q6, product call for Brandon); renaming a conversation from the UI if wanted (product call).

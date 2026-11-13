@@ -307,6 +307,78 @@ describe("App", () => {
     });
   });
 
+  describe("a first question answered while the list is still loading (Q38)", () => {
+    const root = msg({ id: "r8", conversation_id: "c8", role: "system", content: "sys" });
+    const u = msg({ id: "u8", conversation_id: "c8", parent_id: "r8", content: "Why is the sky blue?" });
+    const a = msg({ id: "a8", conversation_id: "c8", parent_id: "u8", role: "assistant", content: "Rayleigh scattering." });
+    const conv = (title: string) => ({ id: "c8", title, created_at: root.created_at, root_message_id: "r8" });
+    const sse = (...events: string[]) =>
+      new Response(events.join(""), { status: 200, headers: { "content-type": "text/event-stream" } });
+
+    /**
+     * The first list request hangs until `finishFirstList(snapshot)`; later
+     * ones return `[titled]`. Everything else is routed like the server.
+     */
+    function setup() {
+      let finishFirstList: (body: unknown) => void = () => undefined;
+      let listCalls = 0;
+      let replied = false;
+      const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+        const key = `${init?.method ?? "GET"} ${String(input)}`;
+        switch (key) {
+          case "GET /api/conversations":
+            listCalls += 1;
+            if (listCalls === 1) return new Promise<Response>((r) => (finishFirstList = (body) => r(jsonResponse(body))));
+            return jsonResponse([conv("Why is the sky blue?")]);
+          case "POST /api/conversations":
+            return jsonResponse(conv("New conversation"), 201);
+          case "GET /api/messages/r8/path":
+            return jsonResponse([root]);
+          case "GET /api/conversations/c8/tree":
+            return jsonResponse({ conversation_id: "c8", nodes: (replied ? [root, u, a] : [root]).map(treeNode) });
+          case "POST /api/messages/r8/reply":
+            replied = true;
+            return sse(sseEvent("user", u), sseEvent("token", { text: "Rayleigh scattering." }), sseEvent("done", a));
+          default:
+            return jsonResponse({ detail: `unrouted request: ${key}` }, 599);
+        }
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      return { finish: (body: unknown) => finishFirstList(body), listCalls: () => listCalls };
+    }
+
+    async function askWhileLoading() {
+      const ui = userEvent.setup();
+      render(<App />);
+      expect(screen.getByRole("status")).toHaveTextContent("Loading conversations");
+      await ui.click(screen.getByRole("button", { name: "New conversation" }));
+      await screen.findByText("Send a message to start.");
+      await ui.type(screen.getByRole("textbox", { name: "Message" }), "Why is the sky blue?{Enter}");
+      await within(screen.getByRole("region", { name: "Chat" })).findByText("Rayleigh scattering.");
+    }
+
+    it("shows the server's title once a pre-create list snapshot arrives", async () => {
+      const { finish, listCalls } = setup();
+      await askWhileLoading();
+      expect(listCalls()).toBe(1); // no list yet, so nothing to refresh
+      finish([]); // a snapshot taken before the conversation existed
+      const list = await screen.findByRole("list", { name: "Conversations" });
+      await waitFor(() => expect(within(list).getByRole("button", { name: "Why is the sky blue?" })).toBeInTheDocument());
+      expect(within(list).queryByText("New conversation")).not.toBeInTheDocument();
+      expect(listCalls()).toBe(2);
+    });
+
+    it("doesn't refetch when the list already has the new title", async () => {
+      const { finish, listCalls } = setup();
+      await askWhileLoading();
+      finish([conv("Why is the sky blue?")]);
+      const list = await screen.findByRole("list", { name: "Conversations" });
+      expect(within(list).getByRole("button", { name: "Why is the sky blue?" })).toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 30));
+      expect(listCalls()).toBe(1);
+    });
+  });
+
   describe("a first question whose reply fails (Q35)", () => {
     const root = msg({ id: "r7", conversation_id: "c7", role: "system", content: "sys" });
     const u = msg({ id: "u7", conversation_id: "c7", parent_id: "r7", content: "Why is the sky blue?" });

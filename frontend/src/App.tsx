@@ -61,6 +61,14 @@ export default function App() {
    * so it only uses the functional state update.)
    */
   const [replyCounts, setReplyCounts] = useState<Readonly<Record<string, number>>>({});
+  /**
+   * Conversations with a turn saved in this session. A turn that lands while
+   * the list is still loading can't refresh titles (there's no list yet), and
+   * the list response may be a snapshot from before the conversation existed,
+   * so `withCreated` re-adds it with its stale "New conversation" label (Q38).
+   * The list load checks this set and fetches titles once more in that case.
+   */
+  const turnsSaved = useRef(new Set<string>());
   // Mirror of `state` for `onTurnPersisted`, which can run from a stale closure.
   const stateRef = useRef(state);
   useEffect(() => {
@@ -73,8 +81,12 @@ export default function App() {
    * leaves the old label, it never replaces the list with an error.
    */
   function refreshTitles(conversationId: string) {
+    turnsSaved.current.add(conversationId);
     const s = stateRef.current;
     if (s.kind !== "ready" || s.conversations.find((c) => c.id === conversationId)?.title !== DEFAULT_TITLE) return;
+    fetchTitles();
+  }
+  function fetchTitles() {
     listConversations()
       .then((fetched) => {
         const titles = new Map(fetched.map((c) => [c.id, c.title]));
@@ -97,7 +109,10 @@ export default function App() {
     let cancelled = false;
     listConversations()
       .then((conversations) => {
-        if (!cancelled) setState({ kind: "ready", conversations: withCreated(conversations, created.current) });
+        if (cancelled) return;
+        const merged = withCreated(conversations, created.current);
+        setState({ kind: "ready", conversations: merged });
+        if (merged.some((c) => c.title === DEFAULT_TITLE && turnsSaved.current.has(c.id))) fetchTitles();
       })
       .catch((err: unknown) => {
         if (!cancelled) setState({ kind: "error", message: errorText(err) });
